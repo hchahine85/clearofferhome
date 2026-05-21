@@ -195,7 +195,7 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
       const atResp = await fetch("https://api.airtable.com/v0/appuUlvNaPDNTtjUV/tblegcH03z8ZVjYQh", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${import.meta.env.VITE_AIRTABLE_TOKEN}`,
+          "Authorization": `Bearer pateQVdIlawAGFGHb.a9623ba023f8eaf49d8e4c625d11e14f09412468a6a29736fa36464d5d07c7cb`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
