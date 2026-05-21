@@ -815,4 +815,11 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
             </button>
 
             <p style={{ textAlign:"center", fontFamily:"system-ui", fontSize:13, color:C.muted, marginTop:"1rem" }}>
-              Photos are used only for th
+              Photos are used only for this estimate and never stored or shared.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
