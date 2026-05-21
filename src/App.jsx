@@ -192,7 +192,7 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
 
   const submitToAirtable = async (isCounter = false) => {
     try {
-      await fetch("https://api.airtable.com/v0/appuUlvNaPDNTtjUV/tblegcH03z8ZVjYQh", {
+      const atResp = await fetch("https://api.airtable.com/v0/appuUlvNaPDNTtjUV/tblegcH03z8ZVjYQh", {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${import.meta.env.VITE_AIRTABLE_TOKEN}`,
@@ -207,7 +207,7 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
               "Address": form.address || "",
               "City": form.city || "",
               "State": form.state || "",
-              "ZIP": form.zip || "",
+              "Zip": form.zip || "",
               "Condition": form.condition || "",
               "Reason for Selling": form.reason || "",
               "Timeline": timeline || "",
@@ -215,13 +215,15 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
               "Ai Offer High": result?.offerHigh || 0,
               "Counter Offer Price": counter.price ? Number(counter.price) : 0,
               "What Ai Missed": counter.missed || "",
-              "Bonus Selected": selectedBonuses.join(", ") || "",
+              "Bonus Selected": selectedBonuses.join(", "),
               "Lead Date": new Date().toISOString().split("T")[0],
               "Status": "New Lead",
             }
           }]
         }),
       });
+      const atData = await atResp.json();
+      console.log("Airtable response:", JSON.stringify(atData));
     } catch (e) {
       console.log("Airtable error:", e);
     }
@@ -813,11 +815,4 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
             </button>
 
             <p style={{ textAlign:"center", fontFamily:"system-ui", fontSize:13, color:C.muted, marginTop:"1rem" }}>
-              Photos are used only for this estimate and never stored or shared.
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+              Photos are used only for th
