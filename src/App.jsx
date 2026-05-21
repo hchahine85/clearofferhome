@@ -437,8 +437,22 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
                     </span>
                   </label>
 
-                  <button onClick={() => { if (counter.price) { setCounterSubmitted(true); submitToAirtable(true); } }} disabled={!counter.price}
-                    style={{ background: counter.price ? C.dark : C.border, color:C.white, border:"none", borderRadius:8, padding:"0.9rem", fontSize:16, fontFamily:"Georgia, serif", cursor: counter.price ? "pointer" : "not-allowed", fontWeight:700 }}>
+                  <div>
+                    <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, fontWeight:600, color:C.dark, marginBottom:6 }}>Your contact info</label>
+                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                      {[
+                        { ph:"Your name",     k:"name",  t:"text"  },
+                        { ph:"Phone number", k:"phone", t:"tel"   },
+                        { ph:"Email address",k:"email", t:"email" },
+                      ].map(f => (
+                        <input key={f.k} type={f.t} placeholder={f.ph} value={form[f.k]} onChange={e => set(f.k, e.target.value)}
+                          style={inp()} />
+                      ))}
+                    </div>
+                  </div>
+
+                  <button onClick={() => { if (counter.price && form.name && form.phone) { setCounterSubmitted(true); submitToAirtable(true); } }} disabled={!counter.price || !form.name || !form.phone}
+                    style={{ background: (counter.price && form.name && form.phone) ? C.dark : C.border, color:C.white, border:"none", borderRadius:8, padding:"0.9rem", fontSize:16, fontFamily:"Georgia, serif", cursor: (counter.price && form.name && form.phone) ? "pointer" : "not-allowed", fontWeight:700 }}>
                     Submit My Counter →
                   </button>
                 </div>
