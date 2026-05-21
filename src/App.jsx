@@ -190,6 +190,43 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
     }
   };
 
+  const submitToAirtable = async (isCounter = false) => {
+    try {
+      await fetch("https://api.airtable.com/v0/appuUlvNaPDNTtjUV/tblegcH03z8ZVjYQh", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer patBheJP6WDtJVjYc.224298e6359fb02d18a29cada26a5cfaea394ef4d941701101ba88f9a688db1d",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          records: [{
+            fields: {
+              "Full Name": form.name || "",
+              "Phone": form.phone || "",
+              "Email": form.email || "",
+              "Address": form.address || "",
+              "City": form.city || "",
+              "State": form.state || "",
+              "ZIP": form.zip || "",
+              "Condition": form.condition || "",
+              "Reason for Selling": form.reason || "",
+              "Timeline": timeline || "",
+              "Ai Offer Low": result?.offerLow || 0,
+              "Ai Offer High": result?.offerHigh || 0,
+              "Counter Offer Price": counter.price ? Number(counter.price) : 0,
+              "What Ai Missed": counter.missed || "",
+              "Bonus Selected": selectedBonuses.join(", ") || "",
+              "Lead Date": new Date().toISOString().split("T")[0],
+              "Status": "New Lead",
+            }
+          }]
+        }),
+      });
+    } catch (e) {
+      console.log("Airtable error:", e);
+    }
+  };
+
   const resetAll = () => {
     setPage("landing"); setResult(null); setPhotos([]); setSubmitted(false);
     setLockedIn(false); setCounterSubmitted(false); setTimeline("");
@@ -398,7 +435,7 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
                     </span>
                   </label>
 
-                  <button onClick={() => counter.price && setCounterSubmitted(true)} disabled={!counter.price}
+                  <button onClick={() => { if (counter.price) { setCounterSubmitted(true); submitToAirtable(true); } }} disabled={!counter.price}
                     style={{ background: counter.price ? C.dark : C.border, color:C.white, border:"none", borderRadius:8, padding:"0.9rem", fontSize:16, fontFamily:"Georgia, serif", cursor: counter.price ? "pointer" : "not-allowed", fontWeight:700 }}>
                     Submit My Counter →
                   </button>
@@ -563,7 +600,7 @@ Cash offer should be 55-72% of ARV depending on condition. Use realistic Souther
                     <input key={f.k} type={f.t} placeholder={f.ph} value={form[f.k]} onChange={e => set(f.k, e.target.value)}
                       style={{ padding:"0.65rem 0.85rem", borderRadius:8, border:"1px solid rgba(255,255,255,0.2)", background:"rgba(255,255,255,0.1)", color:C.white, fontFamily:"system-ui", fontSize:13, outline:"none" }} />
                   ))}
-                  <button onClick={() => { setSubmitted(true); setLockedIn(true); }}
+                  <button onClick={() => { setSubmitted(true); setLockedIn(true); submitToAirtable(false); }}
                     style={{ background:C.gold, color:C.dark, border:"none", borderRadius:8, padding:"0.75rem", fontSize:14, fontFamily:"Georgia, serif", cursor:"pointer", fontWeight:700, marginTop:2 }}>
                     Schedule Walkthrough →
                   </button>
