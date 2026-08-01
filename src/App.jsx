@@ -1,839 +1,912 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 
-const C = {
-  bg: "#FAF8F2",
-  dark: "#1C2B1A",
-  gold: "#C8913A",
-  goldLight: "#F5E6CC",
-  text: "#1A1A1A",
-  muted: "#6B7280",
-  white: "#FFFFFF",
-  mint: "#EEF3EC",
-  border: "#DDD8CF",
-  mintBorder: "#C2D5BF",
+// ─────────────────────────────────────────────
+// ClearOffer Home — iOS-style redesign
+// Pages: Home · About · Contact · Estimate flow
+// ─────────────────────────────────────────────
+
+const AIRTABLE_TOKEN = import.meta.env.VITE_AIRTABLE_TOKEN;
+const ANTHROPIC_KEY = import.meta.env.VITE_ANTHROPIC_KEY;
+const AIRTABLE_BASE = "appuUlvNaPDNTtjUV";
+const AIRTABLE_TABLE = "tblegcH03z8ZVjYQh";
+
+// iOS-inspired design tokens
+const T = {
+  bg: "#FFFFFF",
+  bgSoft: "#F5F5F7",
+  text: "#1D1D1F",
+  muted: "#86868B",
+  blue: "#0071E3",
+  blueDark: "#0051A2",
+  green: "#34C759",
+  border: "#E5E5EA",
+  cardShadow: "0 4px 24px rgba(0,0,0,0.06)",
+  font: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 };
 
 const CONDITIONS = [
-  { v: "excellent", icon: "✨", label: "Excellent",   sub: "Move-in ready, recently updated" },
-  { v: "good",      icon: "👍", label: "Good",        sub: "Minor cosmetic updates needed" },
-  { v: "fair",      icon: "🔧", label: "Fair",        sub: "Some repairs needed" },
-  { v: "poor",      icon: "⚠️", label: "Poor",        sub: "Significant repairs needed" },
-  { v: "distressed",icon: "🔨", label: "Distressed",  sub: "Major renovation required" },
+  { id: "excellent", label: "Excellent", desc: "Move-in ready, recently updated" },
+  { id: "good", label: "Good", desc: "Well maintained, minor touch-ups" },
+  { id: "fair", label: "Fair", desc: "Livable but dated, needs some work" },
+  { id: "poor", label: "Needs Work", desc: "Major repairs or renovation needed" },
 ];
 
 const REASONS = [
-  "Relocating","Inherited property","Financial hardship",
-  "Divorce","Avoiding foreclosure","Downsizing","Tired landlord","Just exploring","Other",
+  "Just curious about value",
+  "Relocating / job change",
+  "Inherited this property",
+  "Tired of being a landlord",
+  "Behind on payments",
+  "Divorce / life change",
+  "Property needs too much work",
+  "Other",
 ];
 
 const TIMELINES = [
-  { v: "asap",      label: "As Soon As Possible", sub: "7–14 days",  icon: "⚡" },
-  { v: "flexible",  label: "I Have Some Time",    sub: "30–60 days", icon: "📅" },
-  { v: "exploring", label: "Just Exploring",      sub: "No rush",    icon: "🔍" },
+  { id: "asap", label: "As soon as possible", desc: "7–14 days" },
+  { id: "soon", label: "I have some time", desc: "30–60 days" },
+  { id: "exploring", label: "Just exploring", desc: "No rush" },
 ];
 
 const BONUSES = [
-  {
-    id: "cleanout", icon: "🗑️",
-    title: "The Cleanout Guarantee",
-    desc: "Leave whatever you don't want. Furniture, trash, debris — we handle the dumpsters and the labor. Walk away clean.",
-  },
-  {
-    id: "moving", icon: "🚛",
-    title: "The Moving Bridge",
-    desc: "We'll cover up to $1,500 in moving expenses or drop a secure POD in your driveway for 14 days. Your move, our bill.",
-  },
-  {
-    id: "grace", icon: "🏠",
-    title: "The Post-Close Grace Period",
-    desc: "Get paid at closing and stay in the home for up to 14 extra days — giving you time to secure your next place without rushing.",
-  },
+  { id: "cleanout", icon: "🗑️", title: "Free Cleanout", desc: "Leave anything you don't want. Furniture, boxes, everything — we handle it." },
+  { id: "moving", icon: "🚛", title: "Moving Credit", desc: "Up to $1,500 toward your move or a storage POD in your driveway." },
+  { id: "grace", icon: "🏠", title: "Stay 14 Days After Closing", desc: "Get paid at closing, move out on your schedule. No rush." },
 ];
 
 const LOADING_STEPS = [
   "Locating your property…",
-  "Pulling local comparables…",
-  "AI analyzing room conditions…",
-  "Calculating estimated repair costs…",
+  "Pulling neighborhood comparables…",
+  "Analyzing property condition…",
+  "Calculating your cash offer…",
 ];
 
-const DIFFERENTIATORS = [
-  { icon: "📊", title: "No lowball ambushes", desc: "We show you the math upfront. You see the repair estimates and ARV before you decide anything." },
-  { icon: "🤫", title: "No neighborhood signs", desc: "Your neighbors won't know you're selling until the moving truck arrives. Total discretion." },
-  { icon: "🏗️", title: "Local engineering, not guessing", desc: "Most investors guess at repairs and lowball you to be safe. We use construction engineers to price accurately — more equity in your pocket." },
-];
+// ── Shared UI pieces ─────────────────────────
 
-const fmt = (n) => n ? "$" + Math.round(n).toLocaleString() : "$—";
-
-const inp = (extra = {}) => ({
-  width: "100%", padding: "0.75rem 1rem", borderRadius: 8,
-  border: `1.5px solid ${C.border}`, fontFamily: "system-ui, sans-serif",
-  fontSize: 15, boxSizing: "border-box", background: C.white,
-  outline: "none", color: C.text, ...extra,
-});
-
-export default function App() {
-  const [page, setPage]           = useState("landing");
-  const [step, setStep]           = useState(1);
-  const [heroAddress, setHeroAddress] = useState("");
-  const [form, setForm]           = useState({
-    address:"", city:"", state:"CA", zip:"",
-    beds:"", baths:"", sqft:"", yearBuilt:"",
-    condition:"", reason:"", name:"", phone:"", email:"",
-  });
-  const [photos, setPhotos]       = useState([]);
-  const [result, setResult]       = useState(null);
-  const [error, setError]         = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const [lockedIn, setLockedIn]   = useState(false);
-  const [timeline, setTimeline]   = useState("");
-  const [showCounter, setShowCounter]         = useState(false);
-  const [counterSubmitted, setCounterSubmitted] = useState(false);
-  const [counter, setCounter]     = useState({ price:"", missed:"", committed: false });
-  const [selectedBonuses, setSelectedBonuses] = useState([]);
-  const [loadStep, setLoadStep]   = useState(0);
-  const fileRef = useRef();
-
-  const set  = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const setC = (k, v) => setCounter(c => ({ ...c, [k]: v }));
-
-  const toggleBonus = (id) =>
-    setSelectedBonuses(prev =>
-      prev.includes(id) ? prev.filter(b => b !== id) : [...prev, id]
-    );
-
-  const handleFiles = async (files) => {
-    const next = [];
-    for (const f of Array.from(files).slice(0, 6)) {
-      const b64 = await new Promise((res, rej) => {
-        const r = new FileReader();
-        r.onload = () => res(r.result);
-        r.onerror = rej;
-        r.readAsDataURL(f);
-      });
-      next.push({ name: f.name, preview: b64, data: b64.split(",")[1], type: f.type });
-    }
-    setPhotos(p => [...p, ...next].slice(0, 6));
+function Button({ children, onClick, variant = "primary", size = "lg", style = {}, disabled }) {
+  const base = {
+    fontFamily: T.font,
+    fontWeight: 600,
+    border: "none",
+    cursor: disabled ? "not-allowed" : "pointer",
+    opacity: disabled ? 0.5 : 1,
+    borderRadius: 980,
+    transition: "all 0.2s ease",
+    fontSize: size === "lg" ? 17 : 15,
+    padding: size === "lg" ? "14px 32px" : "10px 22px",
   };
-
-  // Animated loading steps
-  useEffect(() => {
-    if (page !== "loading") return;
-    setLoadStep(0);
-    const timers = LOADING_STEPS.map((_, i) =>
-      setTimeout(() => setLoadStep(i + 1), (i + 1) * 1800)
-    );
-    return () => timers.forEach(clearTimeout);
-  }, [page]);
-
-  const startWithAddress = () => {
-    if (heroAddress.trim()) set("address", heroAddress.trim());
-    setPage("form");
-    setStep(1);
+  const variants = {
+    primary: { background: T.blue, color: "#fff" },
+    secondary: { background: T.bgSoft, color: T.text },
+    ghost: { background: "transparent", color: T.blue },
   };
-
-  const getEstimate = async () => {
-    setPage("loading");
-    setError("");
-    try {
-      const content = [];
-      photos.slice(0, 4).forEach(p =>
-        content.push({ type: "image", source: { type: "base64", media_type: p.type, data: p.data } })
-      );
-      content.push({
-        type: "text",
-        text: `Analyze this property for a real estate wholesaler and return ONLY a JSON object, no markdown, no backticks.
-
-Property:
-- Address: ${form.address}, ${form.city}, ${form.state} ${form.zip}
-- Beds: ${form.beds} | Baths: ${form.baths} | Sqft: ${form.sqft} | Year: ${form.yearBuilt}
-- Condition: ${form.condition}
-- Seller reason: ${form.reason}
-- Photos provided: ${photos.length}
-
-Return this exact JSON shape with realistic values for that market:
-{
-  "marketLow": NUMBER,
-  "marketHigh": NUMBER,
-  "arv": NUMBER,
-  "offerLow": NUMBER,
-  "offerHigh": NUMBER,
-  "repairLow": NUMBER,
-  "repairHigh": NUMBER,
-  "timeline": "7-21 days",
-  "factors": ["factor 1","factor 2","factor 3","factor 4"],
-  "conditionNote": "2 sentence note on condition",
-  "summary": "2-3 sentence opportunity summary for the seller"
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{ ...base, ...variants[variant], ...style }}
+      onMouseEnter={(e) => { if (!disabled && variant === "primary") e.target.style.background = T.blueDark; }}
+      onMouseLeave={(e) => { if (variant === "primary") e.target.style.background = T.blue; }}
+    >
+      {children}
+    </button>
+  );
 }
 
-Cash offer should be 55-72% of ARV depending on condition. Use realistic Southern California market data.`,
-      });
+function Input({ label, value, onChange, type = "text", placeholder, half }) {
+  return (
+    <div style={{ flex: half ? "1 1 45%" : "1 1 100%", minWidth: half ? 140 : "auto" }}>
+      {label && <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: T.muted, marginBottom: 6, fontFamily: T.font }}>{label}</label>}
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: "100%", boxSizing: "border-box", fontFamily: T.font, fontSize: 17,
+          padding: "13px 16px", borderRadius: 12, border: `1px solid ${T.border}`,
+          background: T.bgSoft, color: T.text, outline: "none", transition: "border 0.2s, background 0.2s",
+        }}
+        onFocus={(e) => { e.target.style.border = `1px solid ${T.blue}`; e.target.style.background = "#fff"; }}
+        onBlur={(e) => { e.target.style.border = `1px solid ${T.border}`; e.target.style.background = T.bgSoft; }}
+      />
+    </div>
+  );
+}
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": import.meta.env.VITE_ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          messages: [{ role: "user", content }],
-        }),
-      });
+function Section({ children, soft, style = {} }) {
+  return (
+    <section style={{ background: soft ? T.bgSoft : T.bg, padding: "80px 24px", ...style }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto" }}>{children}</div>
+    </section>
+  );
+}
 
-      const data = await resp.json();
-      const raw = (data.content.find(b => b.type === "text")?.text || "")
-        .replace(/```json|```/g, "").trim();
-      setResult(JSON.parse(raw));
-      setPage("result");
-    } catch {
-      setError("Something went wrong — please try again.");
-      setPage("form");
-    }
-  };
+// ── Navigation ───────────────────────────────
 
-  const submitToAirtable = async (isCounter = false) => {
+function Nav({ page, go }) {
+  const links = [
+    { id: "home", label: "Home" },
+    { id: "about", label: "About Us" },
+    { id: "contact", label: "Contact" },
+  ];
+  return (
+    <nav style={{
+      position: "sticky", top: 0, zIndex: 100,
+      background: "rgba(255,255,255,0.85)", backdropFilter: "blur(20px)",
+      borderBottom: `1px solid ${T.border}`,
+    }}>
+      <div style={{
+        maxWidth: 1000, margin: "0 auto", padding: "0 24px",
+        display: "flex", alignItems: "center", justifyContent: "space-between", height: 56,
+      }}>
+        <div onClick={() => go("home")} style={{ cursor: "pointer", fontFamily: T.font, fontWeight: 700, fontSize: 19, color: T.text }}>
+          ClearOffer <span style={{ color: T.blue }}>Home</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {links.map((l) => (
+            <span key={l.id} onClick={() => go(l.id)} style={{
+              fontFamily: T.font, fontSize: 15, padding: "8px 14px", borderRadius: 980, cursor: "pointer",
+              color: page === l.id ? T.text : T.muted, fontWeight: page === l.id ? 600 : 400,
+              background: page === l.id ? T.bgSoft : "transparent", transition: "all 0.2s",
+            }}>{l.label}</span>
+          ))}
+          <Button size="sm" onClick={() => go("estimate")}>Get My Offer</Button>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// ── Home Page ────────────────────────────────
+
+function HomePage({ go }) {
+  return (
+    <>
+      {/* Hero */}
+      <Section style={{ padding: "110px 24px 90px", textAlign: "center" }}>
+        <h1 style={{ fontFamily: T.font, fontSize: "clamp(38px, 6vw, 64px)", fontWeight: 700, letterSpacing: "-0.02em", color: T.text, margin: 0, lineHeight: 1.1 }}>
+          Know what your home<br />is worth. <span style={{ color: T.blue }}>In 60 seconds.</span>
+        </h1>
+        <p style={{ fontFamily: T.font, fontSize: 21, color: T.muted, maxWidth: 560, margin: "24px auto 36px", lineHeight: 1.5 }}>
+          Get a real cash offer estimate for your home as-is. No agents, no phone calls, no showings — and no obligation.
+        </p>
+        <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+          <Button onClick={() => go("estimate")}>Get My Cash Offer</Button>
+          <Button variant="secondary" onClick={() => go("about")}>How It Works</Button>
+        </div>
+        <p style={{ fontFamily: T.font, fontSize: 13, color: T.muted, marginTop: 20 }}>
+          Free · Private · No commitment
+        </p>
+      </Section>
+
+      {/* How it works */}
+      <Section soft>
+        <h2 style={{ fontFamily: T.font, fontSize: 34, fontWeight: 700, textAlign: "center", color: T.text, margin: "0 0 12px", letterSpacing: "-0.01em" }}>
+          Selling, simplified.
+        </h2>
+        <p style={{ fontFamily: T.font, fontSize: 17, color: T.muted, textAlign: "center", margin: "0 0 48px" }}>
+          Three steps. No pressure at any of them.
+        </p>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
+          {[
+            { n: "1", title: "Tell us about your home", desc: "Answer a few quick questions and add photos if you'd like. Takes about a minute." },
+            { n: "2", title: "Get your instant estimate", desc: "Our valuation engine analyzes local comparables and condition to give you a real cash range — like a trade-in appraisal, but for your house." },
+            { n: "3", title: "Decide on your timeline", desc: "Like your number? Schedule a quick video walkthrough for a firm written offer. Not ready? No one will pressure you." },
+          ].map((s) => (
+            <div key={s.n} style={{ background: "#fff", borderRadius: 20, padding: 32, boxShadow: T.cardShadow }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: "50%", background: T.blue, color: "#fff",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontFamily: T.font, fontWeight: 700, fontSize: 18, marginBottom: 18,
+              }}>{s.n}</div>
+              <h3 style={{ fontFamily: T.font, fontSize: 20, fontWeight: 600, color: T.text, margin: "0 0 8px" }}>{s.title}</h3>
+              <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, lineHeight: 1.5, margin: 0 }}>{s.desc}</p>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Why us */}
+      <Section>
+        <h2 style={{ fontFamily: T.font, fontSize: 34, fontWeight: 700, textAlign: "center", color: T.text, margin: "0 0 48px", letterSpacing: "-0.01em" }}>
+          Why homeowners choose us
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 28 }}>
+          {[
+            { icon: "💰", title: "Top dollar, as-is", desc: "We're Southern California investors who pay competitive prices for homes in any condition. No repairs, no cleaning, no staging." },
+            { icon: "🔍", title: "Transparent process", desc: "You see the math behind your offer. No hidden fees, no commissions, no surprise deductions at closing." },
+            { icon: "🏗️", title: "Real expertise", desc: "Our team includes construction engineers and market specialists — your offer is based on real repair costs, not guesswork." },
+            { icon: "🔒", title: "Completely private", desc: "No signs in your yard, no open houses, no neighbors knowing your business. Everything happens on your terms." },
+            { icon: "⚡", title: "Close on your schedule", desc: "14 days or 90 days — you pick the closing date. We work around your life, not the other way around." },
+            { icon: "🤝", title: "No pressure, ever", desc: "Your estimate is free and there's zero obligation. Take your time, compare your options, decide what's right for you." },
+          ].map((f) => (
+            <div key={f.title} style={{ padding: "8px 4px" }}>
+              <div style={{ fontSize: 34, marginBottom: 12 }}>{f.icon}</div>
+              <h3 style={{ fontFamily: T.font, fontSize: 19, fontWeight: 600, color: T.text, margin: "0 0 6px" }}>{f.title}</h3>
+              <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, lineHeight: 1.55, margin: 0 }}>{f.desc}</p>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      {/* Bottom CTA */}
+      <Section soft style={{ textAlign: "center" }}>
+        <h2 style={{ fontFamily: T.font, fontSize: 34, fontWeight: 700, color: T.text, margin: "0 0 14px", letterSpacing: "-0.01em" }}>
+          Curious what you'd get?
+        </h2>
+        <p style={{ fontFamily: T.font, fontSize: 17, color: T.muted, margin: "0 0 30px" }}>
+          Find out in about a minute. It costs nothing and no one will call you unless you ask.
+        </p>
+        <Button onClick={() => go("estimate")}>Get My Cash Offer</Button>
+      </Section>
+    </>
+  );
+}
+
+// ── About Page ───────────────────────────────
+
+function AboutPage({ go }) {
+  return (
+    <>
+      <Section style={{ padding: "90px 24px 60px", textAlign: "center" }}>
+        <h1 style={{ fontFamily: T.font, fontSize: "clamp(32px, 5vw, 52px)", fontWeight: 700, color: T.text, margin: 0, letterSpacing: "-0.02em" }}>
+          We buy homes the way<br />it <span style={{ color: T.blue }}>should</span> work.
+        </h1>
+        <p style={{ fontFamily: T.font, fontSize: 19, color: T.muted, maxWidth: 620, margin: "22px auto 0", lineHeight: 1.6 }}>
+          ClearOffer Home is a Southern California real estate investment team built on a simple idea: selling your home for cash shouldn't feel shady, pushy, or embarrassing.
+        </p>
+      </Section>
+
+      <Section soft>
+        <div style={{ maxWidth: 720, margin: "0 auto" }}>
+          <h2 style={{ fontFamily: T.font, fontSize: 28, fontWeight: 700, color: T.text, margin: "0 0 16px" }}>Our story</h2>
+          <p style={{ fontFamily: T.font, fontSize: 17, color: T.text, lineHeight: 1.7, margin: "0 0 16px" }}>
+            We started ClearOffer Home after years in the mortgage and real estate world, watching homeowners get bombarded with lowball calls, misleading postcards, and "We Buy Ugly Houses" signs that made asking for help feel like something to be ashamed of.
+          </p>
+          <p style={{ fontFamily: T.font, fontSize: 17, color: T.text, lineHeight: 1.7, margin: "0 0 16px" }}>
+            We flipped the model. Instead of chasing you, we built a tool that lets you find out what your home is worth privately, instantly, and on your own terms — the same way you'd get an online appraisal for your car. If the number works for you, we'll make it real. If it doesn't, no one bothers you.
+          </p>
+          <p style={{ fontFamily: T.font, fontSize: 17, color: T.text, lineHeight: 1.7, margin: 0 }}>
+            We're investors — we buy homes as-is, with our own process, and close fast. And because our team includes people from mortgage lending, construction engineering, and architecture, our offers are grounded in real numbers, not guesses designed to lowball you.
+          </p>
+        </div>
+      </Section>
+
+      <Section>
+        <h2 style={{ fontFamily: T.font, fontSize: 28, fontWeight: 700, color: T.text, textAlign: "center", margin: "0 0 40px" }}>
+          What we stand for
+        </h2>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
+          {[
+            { title: "Transparency first", desc: "You'll always see how we arrived at your number — market value, repair estimates, and our margin. No black boxes." },
+            { title: "Respect for your situation", desc: "Inherited property, tough finances, tired of tenants — whatever brought you here, you'll be treated like a person, not a lead." },
+            { title: "Local, focused, accountable", desc: "We work exclusively in Southern California. We know these neighborhoods because we live and work in them." },
+          ].map((v) => (
+            <div key={v.title} style={{ background: T.bgSoft, borderRadius: 20, padding: 30 }}>
+              <h3 style={{ fontFamily: T.font, fontSize: 19, fontWeight: 600, color: T.text, margin: "0 0 8px" }}>{v.title}</h3>
+              <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, lineHeight: 1.55, margin: 0 }}>{v.desc}</p>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section soft style={{ textAlign: "center" }}>
+        <h2 style={{ fontFamily: T.font, fontSize: 30, fontWeight: 700, color: T.text, margin: "0 0 14px" }}>
+          See what your home is worth
+        </h2>
+        <Button onClick={() => go("estimate")}>Get My Cash Offer</Button>
+      </Section>
+    </>
+  );
+}
+
+// ── Contact Page ─────────────────────────────
+
+function ContactPage() {
+  const [form, setForm] = useState({ name: "", email: "", phone: "", message: "" });
+  const [sent, setSent] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const submit = async () => {
+    setSending(true);
     try {
-      const atResp = await fetch("https://api.airtable.com/v0/appuUlvNaPDNTtjUV/tblegcH03z8ZVjYQh", {
+      await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`, {
         method: "POST",
-        headers: {
-          "Authorization": `Bearer pateQVdIlawAGFGHb.a9623ba023f8eaf49d8e4c625d11e14f09412468a6a29736fa36464d5d07c7cb`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           records: [{
             fields: {
-              "Full Name": form.name || "",
-              "Phone": form.phone || "",
-              "Email": form.email || "",
-              "Address": form.address || "",
-              "City": form.city || "",
-              "State": form.state || "",
-              "Zip": form.zip || "",
-              "Condition": form.condition || "",
-              "Reason for Selling": form.reason || "",
-              "Timeline": timeline || "",
-              "Ai Offer Low": result?.offerLow || 0,
-              "Ai Offer High": result?.offerHigh || 0,
-              "Counter Offer Price": counter.price ? Number(counter.price) : 0,
-              "What Ai Missed": counter.missed || "",
-              "Bonus Selected": selectedBonuses.join(", "),
+              "Full Name": form.name,
+              "Email": form.email,
+              "Phone": form.phone,
+              "What AI Missed": `CONTACT FORM: ${form.message}`,
               "Lead Date": new Date().toISOString().split("T")[0],
               "Status": "New Lead",
-            }
-          }]
+            },
+          }],
         }),
       });
-      const atData = await atResp.json();
-      console.log("Airtable response:", JSON.stringify(atData));
+      setSent(true);
     } catch (e) {
-      console.log("Airtable error:", e);
+      console.error("Contact submit error:", e);
+      setSent(true);
     }
+    setSending(false);
   };
-
-  const resetAll = () => {
-    setPage("landing"); setResult(null); setPhotos([]); setSubmitted(false);
-    setLockedIn(false); setCounterSubmitted(false); setTimeline("");
-    setCounter({ price:"", missed:"", committed: false }); setSelectedBonuses([]);
-    setHeroAddress(""); setForm({ address:"", city:"", state:"CA", zip:"",
-      beds:"", baths:"", sqft:"", yearBuilt:"", condition:"", reason:"",
-      name:"", phone:"", email:"" });
-  };
-
-  // ─── LANDING ────────────────────────────────────────────────────────────────
-  if (page === "landing") return (
-    <div style={{ fontFamily: "Georgia, serif", background: C.bg, minHeight: "100vh" }}>
-      <style>{`
-        @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
-        .fade-up { animation: fadeUp 0.5s ease both; }
-      `}</style>
-
-      {/* Nav */}
-      <nav style={{ padding:"1.2rem 2rem", display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:`1px solid ${C.border}`, background:C.white }}>
-        <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-          <div style={{ width:34, height:34, background:C.dark, borderRadius:8, display:"flex", alignItems:"center", justifyContent:"center", fontSize:18 }}>🏠</div>
-          <span style={{ fontWeight:700, fontSize:18, color:C.dark }}>FairExit AI</span>
-        </div>
-        <button onClick={startWithAddress} style={{ background:C.dark, color:C.white, border:"none", borderRadius:8, padding:"0.6rem 1.4rem", fontFamily:"Georgia, serif", fontSize:15, cursor:"pointer" }}>
-          Get My Estimate →
-        </button>
-      </nav>
-
-      {/* ── HERO ── */}
-      <div style={{ background:C.dark, padding:"5rem 2rem 4rem", textAlign:"center", position:"relative", overflow:"hidden" }}>
-        {/* Subtle grid texture */}
-        <div style={{ position:"absolute", inset:0, backgroundImage:"linear-gradient(rgba(200,145,58,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(200,145,58,0.04) 1px,transparent 1px)", backgroundSize:"48px 48px", pointerEvents:"none" }} />
-
-        <div style={{ maxWidth:680, margin:"0 auto", position:"relative" }}>
-          <div style={{ display:"inline-block", background:"rgba(200,145,58,0.15)", color:C.gold, fontSize:13, fontFamily:"system-ui", padding:"0.4rem 1.1rem", borderRadius:20, marginBottom:"1.5rem", border:`1px solid rgba(200,145,58,0.3)` }}>
-            No agents &nbsp;·&nbsp; No showings &nbsp;·&nbsp; No obligation
-          </div>
-
-          <h1 style={{ fontSize:"clamp(1.8rem,5vw,3.2rem)", lineHeight:1.15, color:C.white, margin:"0 0 1.25rem", fontWeight:700 }}>
-            Skip the Realtor.<br/>Skip the Repairs.<br/><span style={{ color:C.gold }}>Get Your Cash Number Now.</span>
-          </h1>
-
-          <p style={{ fontSize:17, color:"rgba(255,255,255,0.65)", lineHeight:1.75, fontFamily:"system-ui", maxWidth:500, margin:"0 auto 2.5rem" }}>
-            Our AI vision analyzes your home's as-is condition and generates a preliminary cash offer in 60 seconds. No phone calls required to see your range.
-          </p>
-
-          {/* Hero input */}
-          <div style={{ background:"rgba(255,255,255,0.08)", borderRadius:14, padding:"1.5rem", maxWidth:520, margin:"0 auto", border:`1px solid rgba(255,255,255,0.12)` }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(255,255,255,0.1)", borderRadius:8, padding:"0.75rem 1rem", marginBottom:12, border:`1px solid rgba(255,255,255,0.15)` }}>
-              <span style={{ fontSize:16 }}>📍</span>
-              <input
-                value={heroAddress}
-                onChange={e => setHeroAddress(e.target.value)}
-                onKeyDown={e => e.key === "Enter" && startWithAddress()}
-                placeholder="Enter your property address…"
-                style={{ background:"transparent", border:"none", outline:"none", color:C.white, fontFamily:"system-ui", fontSize:15, flex:1 }}
-              />
-            </div>
-            <div onClick={() => fileRef.current?.click()} style={{ display:"flex", alignItems:"center", gap:10, background:"rgba(255,255,255,0.06)", borderRadius:8, padding:"0.75rem 1rem", marginBottom:16, border:`1px dashed rgba(255,255,255,0.2)`, cursor:"pointer" }}>
-              <span style={{ fontSize:16 }}>📸</span>
-              <span style={{ color:"rgba(255,255,255,0.55)", fontFamily:"system-ui", fontSize:14 }}>
-                {photos.length > 0 ? `${photos.length} photo${photos.length > 1 ? "s" : ""} selected` : "Tap to upload 3–5 photos of your most dated rooms"}
-              </span>
-            </div>
-            <input ref={fileRef} type="file" accept="image/*" multiple onChange={e => handleFiles(e.target.files)} style={{ display:"none" }} />
-            <button onClick={startWithAddress} style={{ width:"100%", background:C.gold, color:C.dark, border:"none", borderRadius:8, padding:"1rem", fontSize:17, fontFamily:"Georgia, serif", cursor:"pointer", fontWeight:700 }}>
-              Generate My Cash Range →
-            </button>
-            <p style={{ color:"rgba(255,255,255,0.3)", fontFamily:"system-ui", fontSize:12, marginTop:"0.75rem", marginBottom:0 }}>
-              Takes 60 seconds · No sign-up required
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── HOW IT WORKS ── */}
-      <div style={{ background:C.white, padding:"4rem 2rem", borderBottom:`1px solid ${C.border}` }}>
-        <div style={{ maxWidth:680, margin:"0 auto" }}>
-          <h2 style={{ textAlign:"center", fontSize:26, color:C.dark, margin:"0 0 0.5rem" }}>How It Works</h2>
-          <p style={{ textAlign:"center", fontFamily:"system-ui", color:C.muted, marginBottom:"2.5rem" }}>Three steps. No commitment.</p>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))", gap:"2rem" }}>
-            {[
-              { n:"1", t:"Describe your home",    d:"Address, beds, baths, condition. Under a minute." },
-              { n:"2", t:"Upload a few photos",   d:"Exterior, kitchen, bathrooms. Totally optional." },
-              { n:"3", t:"Get your cash range",   d:"Instant estimate. No pressure to move forward." },
-            ].map(s => (
-              <div key={s.n} style={{ textAlign:"center" }}>
-                <div style={{ width:50, height:50, background:C.dark, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 1rem", color:C.gold, fontSize:20, fontWeight:700 }}>{s.n}</div>
-                <h3 style={{ fontSize:16, color:C.dark, margin:"0 0 0.4rem" }}>{s.t}</h3>
-                <p style={{ fontSize:14, color:C.muted, fontFamily:"system-ui", lineHeight:1.6, margin:0 }}>{s.d}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── WHY WE'RE DIFFERENT ── */}
-      <div style={{ padding:"4rem 2rem", background:C.bg }}>
-        <div style={{ maxWidth:680, margin:"0 auto" }}>
-          <h2 style={{ textAlign:"center", fontSize:26, color:C.dark, margin:"0 0 0.4rem" }}>Why we're different.</h2>
-          <p style={{ textAlign:"center", fontFamily:"system-ui", color:C.muted, marginBottom:"2.5rem" }}>Not your typical "We Buy Ugly Houses" investor.</p>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))", gap:"1.5rem" }}>
-            {DIFFERENTIATORS.map(d => (
-              <div key={d.title} style={{ background:C.white, borderRadius:12, padding:"1.5rem", border:`1px solid ${C.border}` }}>
-                <div style={{ fontSize:28, marginBottom:"0.75rem" }}>{d.icon}</div>
-                <h3 style={{ fontSize:15, color:C.dark, margin:"0 0 0.5rem", fontFamily:"system-ui", fontWeight:700 }}>{d.title}</h3>
-                <p style={{ fontSize:13, color:C.muted, fontFamily:"system-ui", lineHeight:1.6, margin:0 }}>{d.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Trust bar */}
-      <div style={{ background:C.white, borderTop:`1px solid ${C.border}`, padding:"1.75rem 2rem", display:"flex", justifyContent:"center", flexWrap:"wrap", gap:"2rem" }}>
-        {["✓ Cash offers only","✓ No commissions","✓ Close in 7–21 days","✓ No obligation to accept"].map(t => (
-          <span key={t} style={{ fontSize:14, color:C.dark, fontFamily:"system-ui" }}>{t}</span>
-        ))}
-      </div>
-
-      {/* Bottom CTA */}
-      <div style={{ background:C.dark, padding:"4rem 2rem", textAlign:"center" }}>
-        <h2 style={{ color:C.white, fontSize:26, margin:"0 0 0.75rem" }}>Curious what your home is worth?</h2>
-        <p style={{ color:"rgba(255,255,255,0.6)", fontFamily:"system-ui", margin:"0 0 2rem" }}>No agents. No showings. Just an honest number.</p>
-        <button onClick={startWithAddress} style={{ background:C.gold, color:C.dark, border:"none", borderRadius:10, padding:"1rem 2.5rem", fontSize:17, fontFamily:"Georgia, serif", cursor:"pointer", fontWeight:700 }}>
-          Get My Free Estimate →
-        </button>
-      </div>
-    </div>
-  );
-
-  // ─── LOADING ─────────────────────────────────────────────────────────────────
-  if (page === "loading") return (
-    <div style={{ fontFamily:"Georgia, serif", background:C.bg, minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}} @keyframes checkIn{from{opacity:0;transform:scale(0.5)}to{opacity:1;transform:scale(1)}}`}</style>
-      <div style={{ maxWidth:400, width:"100%", padding:"2rem" }}>
-        <div style={{ textAlign:"center", marginBottom:"2.5rem" }}>
-          <div style={{ width:52, height:52, border:`3px solid ${C.border}`, borderTop:`3px solid ${C.dark}`, borderRadius:"50%", animation:"spin 0.9s linear infinite", margin:"0 auto 1.25rem" }} />
-          <h2 style={{ color:C.dark, margin:"0 0 0.25rem", fontSize:22 }}>Analyzing your property…</h2>
-          <p style={{ color:C.muted, fontFamily:"system-ui", margin:0, fontSize:14 }}>This takes about 8 seconds</p>
-        </div>
-
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          {LOADING_STEPS.map((label, i) => {
-            const done = loadStep > i;
-            const active = loadStep === i;
-            return (
-              <div key={label} style={{ display:"flex", alignItems:"center", gap:12, opacity: done || active ? 1 : 0.35, transition:"opacity 0.4s" }}>
-                <div style={{ width:28, height:28, borderRadius:"50%", background: done ? C.dark : active ? C.gold + "33" : C.border, border: done ? "none" : `2px solid ${active ? C.gold : C.border}`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, transition:"all 0.4s" }}>
-                  {done
-                    ? <span style={{ color:C.gold, fontSize:14, animation:"checkIn 0.3s ease" }}>✓</span>
-                    : active
-                      ? <div style={{ width:10, height:10, borderRadius:"50%", background:C.gold }} />
-                      : null
-                  }
-                </div>
-                <span style={{ fontFamily:"system-ui", fontSize:15, color: done ? C.dark : C.muted }}>{label}</span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-
-  // ─── RESULT ──────────────────────────────────────────────────────────────────
-  if (page === "result" && result) return (
-    <div style={{ fontFamily:"Georgia, serif", background:C.bg, minHeight:"100vh", padding:"2rem 1rem" }}>
-      <style>{`@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}`}</style>
-
-      {/* ── COUNTER MODAL ── */}
-      {showCounter && (
-        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.6)", zIndex:100, display:"flex", alignItems:"center", justifyContent:"center", padding:"1rem" }}>
-          <div style={{ background:C.white, borderRadius:16, padding:"2rem", maxWidth:480, width:"100%", position:"relative", animation:"fadeUp 0.25s ease" }}>
-            <button onClick={() => setShowCounter(false)} style={{ position:"absolute", top:16, right:16, background:"none", border:"none", fontSize:20, cursor:"pointer", color:C.muted }}>✕</button>
-
-            {!counterSubmitted ? (
-              <>
-                <div style={{ fontSize:28, marginBottom:"0.6rem" }}>💬</div>
-                <h2 style={{ fontSize:22, color:C.dark, margin:"0 0 0.4rem" }}>Challenge the AI</h2>
-                <p style={{ fontFamily:"system-ui", fontSize:14, color:C.muted, margin:"0 0 1.75rem", lineHeight:1.6 }}>
-                  The AI only knows what it can see. Tell us what it missed — our human team reviews every counter personally.
-                </p>
-
-                <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-                  <div>
-                    <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, fontWeight:600, color:C.dark, marginBottom:6 }}>What number did you have in mind?</label>
-                    <div style={{ position:"relative" }}>
-                      <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontFamily:"system-ui", fontSize:16, color:C.muted }}>$</span>
-                      <input type="number" placeholder="450,000" value={counter.price} onChange={e => setC("price", e.target.value)} style={inp({ paddingLeft:"1.75rem" })} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, fontWeight:600, color:C.dark, marginBottom:6 }}>What did the AI miss?</label>
-                    <textarea rows={3} value={counter.missed} onChange={e => setC("missed", e.target.value)}
-                      placeholder="e.g. New roof installed 2022, full HVAC replacement, renovated kitchen not visible in photos, permitted addition…"
-                      style={inp({ resize:"vertical", lineHeight:1.6 })} />
-                    <p style={{ fontFamily:"system-ui", fontSize:12, color:C.muted, margin:"4px 0 0" }}>Improvements, repairs, or features not visible in photos</p>
-                  </div>
-
-                  <label style={{ display:"flex", alignItems:"flex-start", gap:10, cursor:"pointer", padding:"1rem", background:C.mint, borderRadius:8, border:`1px solid ${C.mintBorder}` }}>
-                    <input type="checkbox" checked={counter.committed} onChange={e => setC("committed", e.target.checked)} style={{ marginTop:3, flexShrink:0, width:16, height:16, accentColor:C.dark }} />
-                    <span style={{ fontFamily:"system-ui", fontSize:14, color:"#2D4A2C", lineHeight:1.55 }}>
-                      If our team can get close to my number after a quick 10-minute video walkthrough, I'm open to moving forward.
-                    </span>
-                  </label>
-
-                  <div>
-                    <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, fontWeight:600, color:C.dark, marginBottom:6 }}>Your contact info</label>
-                    <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                      {[
-                        { ph:"Your name",     k:"name",  t:"text"  },
-                        { ph:"Phone number", k:"phone", t:"tel"   },
-                        { ph:"Email address",k:"email", t:"email" },
-                      ].map(f => (
-                        <input key={f.k} type={f.t} placeholder={f.ph} value={form[f.k]} onChange={e => set(f.k, e.target.value)}
-                          style={inp()} />
-                      ))}
-                    </div>
-                  </div>
-
-                  <button onClick={() => { if (counter.price && form.name && form.phone) { setCounterSubmitted(true); submitToAirtable(true); } }} disabled={!counter.price || !form.name || !form.phone}
-                    style={{ background: (counter.price && form.name && form.phone) ? C.dark : C.border, color:C.white, border:"none", borderRadius:8, padding:"0.9rem", fontSize:16, fontFamily:"Georgia, serif", cursor: (counter.price && form.name && form.phone) ? "pointer" : "not-allowed", fontWeight:700 }}>
-                    Submit My Counter →
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign:"center", padding:"1rem 0" }}>
-                <div style={{ fontSize:40, marginBottom:"1rem" }}>🤝</div>
-                <h2 style={{ color:C.dark, margin:"0 0 0.75rem" }}>Counter received.</h2>
-                <p style={{ fontFamily:"system-ui", color:C.muted, lineHeight:1.7, margin:"0 0 1.5rem" }}>
-                  Our team is reviewing your number and what you shared. We'll reach out within a few hours — to talk through the numbers, not pressure you.
-                </p>
-                {counter.committed && (
-                  <div style={{ background:C.mint, border:`1px solid ${C.mintBorder}`, borderRadius:8, padding:"0.75rem 1rem", fontFamily:"system-ui", fontSize:14, color:"#2D4A2C", marginBottom:"1.5rem" }}>
-                    ✓ You're open to a walkthrough if we hit your number — noted.
-                  </div>
-                )}
-                <button onClick={() => setShowCounter(false)} style={{ background:"none", border:`1.5px solid ${C.border}`, borderRadius:8, padding:"0.7rem 1.5rem", fontFamily:"system-ui", fontSize:14, cursor:"pointer", color:C.dark }}>
-                  Close
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div style={{ maxWidth:620, margin:"0 auto" }}>
-
-        {/* Header */}
-        <div style={{ textAlign:"center", marginBottom:"2rem", animation:"fadeUp 0.4s ease" }}>
-          <div style={{ display:"inline-block", background:"#D4EDDA", color:"#155724", padding:"0.35rem 1rem", borderRadius:20, fontSize:13, fontFamily:"system-ui", marginBottom:"1rem" }}>✓ Estimate ready</div>
-          <h1 style={{ fontSize:26, color:C.dark, margin:"0 0 0.25rem" }}>Your Preliminary AI Cash Range</h1>
-          <p style={{ color:C.muted, fontFamily:"system-ui", margin:0 }}>{form.address}{form.city ? `, ${form.city}` : ""}{form.state ? `, ${form.state}` : ""}</p>
-        </div>
-
-        {/* Main offer */}
-        <div style={{ background:C.dark, borderRadius:16, padding:"2.25rem 2rem", marginBottom:"1.25rem", textAlign:"center", animation:"fadeUp 0.4s ease 0.1s both" }}>
-          <p style={{ color:"rgba(255,255,255,0.5)", fontFamily:"system-ui", fontSize:12, margin:"0 0 0.5rem", textTransform:"uppercase", letterSpacing:"0.08em" }}>Preliminary AI Cash Offer Range</p>
-          <div style={{ color:C.gold, fontSize:"clamp(2rem,7vw,3rem)", fontWeight:700, margin:"0 0 0.25rem", letterSpacing:"-0.5px" }}>
-            {fmt(result.offerLow)} – {fmt(result.offerHigh)}
-          </div>
-          <p style={{ color:"rgba(255,255,255,0.35)", fontFamily:"system-ui", fontSize:12, margin:0 }}>Cash · No commissions · Subject to in-person inspection</p>
-        </div>
-
-        {/* Stats */}
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:"1.25rem", animation:"fadeUp 0.4s ease 0.15s both" }}>
-          {[
-            { l:"Est. Market Value", v:`${fmt(result.marketLow)}–${fmt(result.marketHigh)}` },
-            { l:"After-Repair Value", v:fmt(result.arv) },
-            { l:"Est. Closing",       v:result.timeline },
-          ].map(s => (
-            <div key={s.l} style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:10, padding:"1rem", textAlign:"center" }}>
-              <p style={{ fontFamily:"system-ui", fontSize:11, color:C.muted, margin:"0 0 0.25rem", textTransform:"uppercase", letterSpacing:"0.04em" }}>{s.l}</p>
-              <p style={{ fontFamily:"system-ui", fontSize:14, fontWeight:700, color:C.dark, margin:0 }}>{s.v}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* Key factors */}
-        <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:12, padding:"1.5rem", marginBottom:"1.25rem" }}>
-          <h3 style={{ fontSize:17, color:C.dark, margin:"0 0 1rem" }}>Key Value Factors</h3>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            {result.factors.map((f, i) => (
-              <div key={i} style={{ display:"flex", gap:10, fontFamily:"system-ui", fontSize:14, color:C.text, alignItems:"flex-start" }}>
-                <span style={{ color:C.gold, flexShrink:0, marginTop:1 }}>◆</span>
-                <span>{f}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Condition + repairs */}
-        <div style={{ background:C.mint, border:`1px solid ${C.mintBorder}`, borderRadius:12, padding:"1.5rem", marginBottom:"1.25rem" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:12 }}>
-            <div style={{ flex:1 }}>
-              <h3 style={{ fontSize:16, color:C.dark, margin:"0 0 0.5rem" }}>Estimated Repair Budget</h3>
-              <p style={{ fontFamily:"system-ui", fontSize:14, color:"#2D4A2C", lineHeight:1.6, margin:0 }}>{result.conditionNote}</p>
-            </div>
-            <div style={{ textAlign:"right", flexShrink:0 }}>
-              <span style={{ fontFamily:"system-ui", fontWeight:700, color:C.dark, fontSize:16 }}>{fmt(result.repairLow)}–{fmt(result.repairHigh)}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Summary */}
-        <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:12, padding:"1.5rem", marginBottom:"1.5rem" }}>
-          <h3 style={{ fontSize:16, color:C.dark, margin:"0 0 0.75rem" }}>Our Assessment</h3>
-          <p style={{ fontFamily:"system-ui", fontSize:15, color:C.text, lineHeight:1.7, margin:0 }}>{result.summary}</p>
-        </div>
-
-        {/* ── UNLOCKABLE BONUSES ── */}
-        <div style={{ background:C.dark, borderRadius:16, padding:"1.75rem", marginBottom:"1.25rem" }}>
-          <p style={{ color:C.gold, fontFamily:"system-ui", fontSize:12, textTransform:"uppercase", letterSpacing:"0.08em", margin:"0 0 0.3rem" }}>Included With Every Closing</p>
-          <h3 style={{ color:C.white, fontSize:19, margin:"0 0 0.4rem" }}>We don't just buy the house. We fund the exit.</h3>
-          <p style={{ color:"rgba(255,255,255,0.5)", fontFamily:"system-ui", fontSize:13, margin:"0 0 1.25rem", lineHeight:1.55 }}>
-            Select the perks that make this transition easier. If we close, these are on us.
-          </p>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {BONUSES.map(b => {
-              const sel = selectedBonuses.includes(b.id);
-              return (
-                <label key={b.id} onClick={() => toggleBonus(b.id)}
-                  style={{ display:"flex", alignItems:"flex-start", gap:12, padding:"1rem", borderRadius:10, background: sel ? "rgba(200,145,58,0.15)" : "rgba(255,255,255,0.06)", border:`1.5px solid ${sel ? C.gold : "rgba(255,255,255,0.1)"}`, cursor:"pointer", transition:"all 0.2s" }}>
-                  <div style={{ width:20, height:20, borderRadius:4, background: sel ? C.gold : "transparent", border: sel ? "none" : "2px solid rgba(255,255,255,0.3)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:1, transition:"all 0.2s" }}>
-                    {sel && <span style={{ color:C.dark, fontSize:13, fontWeight:700 }}>✓</span>}
-                  </div>
-                  <div>
-                    <p style={{ fontFamily:"system-ui", fontSize:14, fontWeight:700, color:C.white, margin:"0 0 3px" }}>
-                      <span style={{ marginRight:6 }}>{b.icon}</span>{b.title}
-                    </p>
-                    <p style={{ fontFamily:"system-ui", fontSize:13, color:"rgba(255,255,255,0.5)", margin:0, lineHeight:1.5 }}>{b.desc}</p>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-          {selectedBonuses.length > 0 && (
-            <p style={{ fontFamily:"system-ui", fontSize:13, color:C.gold, marginTop:"1rem", marginBottom:0, textAlign:"center" }}>
-              ✓ {selectedBonuses.length} perk{selectedBonuses.length > 1 ? "s" : ""} selected — we'll include {selectedBonuses.length > 1 ? "these" : "this"} in your written offer
-            </p>
-          )}
-        </div>
-
-        {/* ── TIMELINE ── */}
-        {!lockedIn && !counterSubmitted && (
-          <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:12, padding:"1.5rem", marginBottom:"1.25rem" }}>
-            <h3 style={{ fontSize:16, color:C.dark, margin:"0 0 0.25rem" }}>What's your ideal timeline?</h3>
-            <p style={{ fontFamily:"system-ui", fontSize:13, color:C.muted, margin:"0 0 1rem" }}>Helps us structure the right offer for your situation</p>
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-              {TIMELINES.map(t => (
-                <button key={t.v} onClick={() => setTimeline(t.v)}
-                  style={{ display:"flex", alignItems:"center", gap:12, padding:"0.85rem 1rem", borderRadius:8, border:`1.5px solid ${timeline===t.v ? C.dark : C.border}`, background: timeline===t.v ? C.mint : C.bg, cursor:"pointer", textAlign:"left" }}>
-                  <span style={{ fontSize:18 }}>{t.icon}</span>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontFamily:"system-ui", fontSize:14, fontWeight:600, color:C.dark }}>{t.label}</div>
-                    <div style={{ fontFamily:"system-ui", fontSize:12, color:C.muted }}>{t.sub}</div>
-                  </div>
-                  {timeline===t.v && <span style={{ color:C.dark }}>✓</span>}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── DUAL CTA ── */}
-        {!lockedIn && !counterSubmitted && (
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:"1.5rem" }}>
-            {/* Lock In */}
-            <div style={{ background:C.dark, borderRadius:12, padding:"1.5rem" }}>
-              <div style={{ fontSize:26, marginBottom:"0.5rem" }}>🔒</div>
-              <h3 style={{ color:C.white, fontSize:15, margin:"0 0 0.4rem" }}>Lock In This Range</h3>
-              <p style={{ color:"rgba(255,255,255,0.5)", fontFamily:"system-ui", fontSize:12, margin:"0 0 1rem", lineHeight:1.5 }}>
-                Schedule a free 10-min video walkthrough to get a firm written offer
-              </p>
-              {!submitted ? (
-                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  {[
-                    { ph:"Your name",     k:"name",  t:"text" },
-                    { ph:"Phone number", k:"phone", t:"tel"  },
-                    { ph:"Email",        k:"email", t:"email"},
-                  ].map(f => (
-                    <input key={f.k} type={f.t} placeholder={f.ph} value={form[f.k]} onChange={e => set(f.k, e.target.value)}
-                      style={{ padding:"0.65rem 0.85rem", borderRadius:8, border:"1px solid rgba(255,255,255,0.2)", background:"rgba(255,255,255,0.1)", color:C.white, fontFamily:"system-ui", fontSize:13, outline:"none" }} />
-                  ))}
-                  <button onClick={() => { setSubmitted(true); setLockedIn(true); submitToAirtable(false); }}
-                    style={{ background:C.gold, color:C.dark, border:"none", borderRadius:8, padding:"0.75rem", fontSize:14, fontFamily:"Georgia, serif", cursor:"pointer", fontWeight:700, marginTop:2 }}>
-                    Schedule Walkthrough →
-                  </button>
-                </div>
-              ) : (
-                <p style={{ color:C.gold, fontFamily:"system-ui", fontSize:13, margin:0 }}>✓ We'll be in touch within 24 hours</p>
-              )}
-            </div>
-
-            {/* Counter */}
-            <div style={{ background:C.bg, border:`2px solid ${C.border}`, borderRadius:12, padding:"1.5rem", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", textAlign:"center" }}>
-              <div style={{ fontSize:26, marginBottom:"0.5rem" }}>💬</div>
-              <h3 style={{ color:C.dark, fontSize:15, margin:"0 0 0.4rem" }}>Challenge the AI</h3>
-              <p style={{ color:C.muted, fontFamily:"system-ui", fontSize:12, margin:"0 0 1rem", lineHeight:1.5 }}>
-                Think your home is worth more? Tell us your number and what we missed.
-              </p>
-              <button onClick={() => setShowCounter(true)}
-                style={{ background:C.white, color:C.dark, border:`2px solid ${C.dark}`, borderRadius:8, padding:"0.75rem 1rem", fontSize:13, fontFamily:"Georgia, serif", cursor:"pointer", fontWeight:700, width:"100%" }}>
-                Make a Counter Offer →
-              </button>
-              <p style={{ color:C.muted, fontFamily:"system-ui", fontSize:11, margin:"0.6rem 0 0" }}>No commitment required</p>
-            </div>
-          </div>
-        )}
-
-        {/* Post-action state */}
-        {(lockedIn || counterSubmitted) && (
-          <div style={{ background:C.dark, borderRadius:16, padding:"2rem", textAlign:"center", marginBottom:"1.5rem" }}>
-            <div style={{ fontSize:40, marginBottom:"1rem" }}>{lockedIn ? "🎉" : "🤝"}</div>
-            <h2 style={{ color:C.white, margin:"0 0 0.75rem" }}>
-              {lockedIn ? `You're all set${form.name ? `, ${form.name}` : ""}!` : "Counter received."}
-            </h2>
-            <p style={{ color:"rgba(255,255,255,0.65)", fontFamily:"system-ui", lineHeight:1.65, margin:0 }}>
-              {lockedIn
-                ? `We'll reach out within 24 hours to schedule your walkthrough. Expect a call or text${form.phone ? ` to ${form.phone}` : ""}.`
-                : "Our team will review your number and reach out within a few hours — not to pressure you, just to talk through the math."}
-            </p>
-            {timeline && (
-              <div style={{ display:"inline-block", background:"rgba(255,255,255,0.1)", borderRadius:8, padding:"0.5rem 1rem", marginTop:"1rem", fontFamily:"system-ui", fontSize:13, color:"rgba(255,255,255,0.7)" }}>
-                Timeline noted: {TIMELINES.find(t => t.v===timeline)?.label}
-              </div>
-            )}
-            {selectedBonuses.length > 0 && (
-              <div style={{ marginTop:"0.75rem", fontFamily:"system-ui", fontSize:13, color:C.gold }}>
-                Perks requested: {selectedBonuses.map(id => BONUSES.find(b => b.id===id)?.title).join(", ")}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Why different — result page reinforcement */}
-        <div style={{ background:C.white, border:`1px solid ${C.border}`, borderRadius:12, padding:"1.5rem", marginBottom:"1.5rem" }}>
-          <h3 style={{ fontSize:16, color:C.dark, margin:"0 0 1rem", fontFamily:"system-ui", fontWeight:700 }}>Why sellers choose us over traditional investors</h3>
-          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-            {[
-              "No lowball ambushes — you see the math before you decide anything",
-              "No neighborhood signs — your neighbors won't know until the truck arrives",
-              "Local construction engineers price the repairs — no guessing, more equity for you",
-            ].map(t => (
-              <div key={t} style={{ display:"flex", gap:8, fontFamily:"system-ui", fontSize:14, color:C.text, alignItems:"flex-start" }}>
-                <span style={{ color:"#2D8A4E", flexShrink:0 }}>✓</span>
-                <span>{t}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <p style={{ textAlign:"center", color:C.muted, fontFamily:"system-ui", fontSize:12, lineHeight:1.6 }}>
-          This is an AI-generated preliminary estimate — not a formal appraisal. Final offer subject to in-person inspection and market conditions.
-        </p>
-
-        <div style={{ textAlign:"center", marginTop:"1.5rem", marginBottom:"1rem" }}>
-          <button onClick={resetAll} style={{ background:"none", border:"none", color:C.muted, fontFamily:"system-ui", fontSize:14, cursor:"pointer", textDecoration:"underline" }}>
-            Start over
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-
-  // ─── FORM ────────────────────────────────────────────────────────────────────
-  const canProceed1 = form.address && form.beds && form.baths && form.sqft && form.condition;
 
   return (
-    <div style={{ fontFamily:"Georgia, serif", background:C.bg, minHeight:"100vh", padding:"2rem 1rem" }}>
-      <div style={{ maxWidth:540, margin:"0 auto" }}>
-        <button onClick={() => step===1 ? setPage("landing") : setStep(s => s-1)}
-          style={{ background:"none", border:"none", color:C.muted, fontFamily:"system-ui", fontSize:14, cursor:"pointer", marginBottom:"1.5rem", padding:0 }}>
-          ← Back
-        </button>
+    <Section style={{ minHeight: "60vh" }}>
+      <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
+        <h1 style={{ fontFamily: T.font, fontSize: 40, fontWeight: 700, color: T.text, margin: "20px 0 12px", letterSpacing: "-0.01em" }}>
+          Talk to a real person
+        </h1>
+        <p style={{ fontFamily: T.font, fontSize: 17, color: T.muted, margin: "0 0 36px", lineHeight: 1.5 }}>
+          Questions about your property, your offer, or how any of this works? Reach out — we answer everything, no strings attached.
+        </p>
 
-        <div style={{ display:"flex", gap:8, marginBottom:"2rem" }}>
-          {[1,2].map(s => (
-            <div key={s} style={{ flex:1, height:4, borderRadius:2, background: s<=step ? C.dark : C.border, transition:"background 0.3s" }} />
+        {sent ? (
+          <div style={{ background: T.bgSoft, borderRadius: 20, padding: 40 }}>
+            <div style={{ fontSize: 44, marginBottom: 12 }}>✅</div>
+            <h3 style={{ fontFamily: T.font, fontSize: 22, fontWeight: 600, color: T.text, margin: "0 0 8px" }}>Message received</h3>
+            <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, margin: 0 }}>We'll get back to you within one business day.</p>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, textAlign: "left" }}>
+            <Input label="Name" value={form.name} onChange={(v) => setForm({ ...form, name: v })} placeholder="Your name" />
+            <Input label="Email" type="email" value={form.email} onChange={(v) => setForm({ ...form, email: v })} placeholder="you@email.com" half />
+            <Input label="Phone" type="tel" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} placeholder="(555) 555-5555" half />
+            <div style={{ flex: "1 1 100%" }}>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: T.muted, marginBottom: 6, fontFamily: T.font }}>How can we help?</label>
+              <textarea
+                value={form.message}
+                onChange={(e) => setForm({ ...form, message: e.target.value })}
+                rows={5}
+                placeholder="Tell us about your property or ask us anything…"
+                style={{
+                  width: "100%", boxSizing: "border-box", fontFamily: T.font, fontSize: 17,
+                  padding: "13px 16px", borderRadius: 12, border: `1px solid ${T.border}`,
+                  background: T.bgSoft, color: T.text, outline: "none", resize: "vertical",
+                }}
+              />
+            </div>
+            <div style={{ flex: "1 1 100%", textAlign: "center", marginTop: 8 }}>
+              <Button onClick={submit} disabled={!form.name || (!form.email && !form.phone) || sending}>
+                {sending ? "Sending…" : "Send Message"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ marginTop: 48, paddingTop: 32, borderTop: `1px solid ${T.border}` }}>
+          <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, margin: "0 0 4px" }}>Prefer email?</p>
+          <a href="mailto:offers@clearofferhome.com" style={{ fontFamily: T.font, fontSize: 17, color: T.blue, textDecoration: "none", fontWeight: 600 }}>
+            offers@clearofferhome.com
+          </a>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// ── Estimate Flow ────────────────────────────
+
+function EstimateFlow({ go }) {
+  const [step, setStep] = useState("form1"); // form1 → form2 → loading → result
+  const [prop, setProp] = useState({
+    address: "", city: "", state: "CA", zip: "",
+    beds: "", baths: "", sqft: "", year: "",
+    condition: "", reason: "",
+  });
+  const [photos, setPhotos] = useState([]);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [result, setResult] = useState(null);
+  const [timeline, setTimeline] = useState("");
+  const [perks, setPerks] = useState([]);
+  const [contact, setContact] = useState({ name: "", phone: "", email: "" });
+  const [counterOpen, setCounterOpen] = useState(false);
+  const [counter, setCounter] = useState({ price: "", missed: "", name: "", phone: "", email: "" });
+  const [submitted, setSubmitted] = useState(null); // "lock" | "counter"
+
+  useEffect(() => {
+    if (step !== "loading") return;
+    if (loadingStep >= LOADING_STEPS.length) return;
+    const t = setTimeout(() => setLoadingStep((s) => s + 1), 1600);
+    return () => clearTimeout(t);
+  }, [step, loadingStep]);
+
+  const runAnalysis = async () => {
+    setStep("loading");
+    setLoadingStep(0);
+    try {
+      const photoBlocks = await Promise.all(
+        photos.slice(0, 6).map(async (f) => {
+          const b64 = await new Promise((res) => {
+            const r = new FileReader();
+            r.onload = () => res(r.result.split(",")[1]);
+            r.readAsDataURL(f);
+          });
+          return { type: "image", source: { type: "base64", media_type: f.type, data: b64 } };
+        })
+      );
+
+      const prompt = `You are a real estate valuation engine for a Southern California cash home buyer. Analyze this property and return ONLY valid JSON.
+
+Property: ${prop.address}, ${prop.city}, ${prop.state} ${prop.zip}
+Beds: ${prop.beds} | Baths: ${prop.baths} | SqFt: ${prop.sqft} | Year built: ${prop.year}
+Condition (owner-reported): ${prop.condition}
+Reason for selling: ${prop.reason}
+${photos.length > 0 ? `${photos.length} photos attached — use them to refine condition assessment.` : "No photos provided."}
+
+Estimate current market value and after-repair value (ARV) based on typical Southern California pricing for the area. Then calculate the cash offer range as a percentage of ARV minus estimated repair costs, scaled by condition:
+- excellent: 78-85% of ARV
+- good: 72-78% of ARV
+- fair: 65-72% of ARV
+- poor: 55-65% of ARV
+
+The offer should feel competitive and fair — this is a preliminary estimate to open a conversation, not a final lowball. When in doubt, lean toward the higher end of the range.
+
+Return ONLY this JSON structure:
+{
+  "offerLow": number,
+  "offerHigh": number,
+  "marketValueLow": number,
+  "marketValueHigh": number,
+  "arv": number,
+  "repairLow": number,
+  "repairHigh": number,
+  "repairNote": "one sentence on likely repair needs",
+  "closingDays": "7-21",
+  "keyFactors": ["factor 1", "factor 2", "factor 3", "factor 4"],
+  "summary": "2-3 sentence plain-English assessment addressed to the homeowner"
+}`;
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "x-api-key": ANTHROPIC_KEY,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1200,
+          messages: [{ role: "user", content: [...photoBlocks, { type: "text", text: prompt }] }],
+        }),
+      });
+      const data = await resp.json();
+      const text = data.content?.[0]?.text || "";
+      const json = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+      setResult(json);
+    } catch (e) {
+      console.error("Analysis error:", e);
+      setResult({
+        offerLow: 0, offerHigh: 0, marketValueLow: 0, marketValueHigh: 0, arv: 0,
+        repairLow: 0, repairHigh: 0, repairNote: "", closingDays: "7-21",
+        keyFactors: ["We couldn't complete the automated analysis"],
+        summary: "Something went wrong on our end. Please try again, or contact us directly and we'll run your estimate personally.",
+      });
+    }
+    setTimeout(() => setStep("result"), 6800);
+  };
+
+  const saveLead = async (kind) => {
+    const fields = {
+      "Full Name": kind === "lock" ? contact.name : counter.name,
+      "Phone": kind === "lock" ? contact.phone : counter.phone,
+      "Email": kind === "lock" ? contact.email : counter.email,
+      "Address": prop.address,
+      "City": prop.city,
+      "State": prop.state,
+      "ZIP": prop.zip,
+      "Condition": prop.condition,
+      "Reason for Selling": prop.reason,
+      "Timeline": timeline,
+      "AI Offer Low": result?.offerLow || 0,
+      "AI Offer High": result?.offerHigh || 0,
+      "Bonuses Selected": perks.join(", "),
+      "Lead Date": new Date().toISOString().split("T")[0],
+      "Status": "New Lead",
+    };
+    if (kind === "counter") {
+      fields["Counter Offer Price"] = Number(counter.price) || 0;
+      fields["What AI Missed"] = counter.missed;
+    }
+    try {
+      const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ records: [{ fields }] }),
+      });
+      const out = await r.json();
+      console.log("Airtable response:", out);
+    } catch (e) {
+      console.error("Airtable error:", e);
+    }
+    setSubmitted(kind);
+    setCounterOpen(false);
+  };
+
+  const fmt = (n) => (n ? `$${Number(n).toLocaleString()}` : "—");
+
+  // — Step 1: property details —
+  if (step === "form1") {
+    const valid = prop.address && prop.city && prop.zip && prop.beds && prop.baths && prop.sqft && prop.condition;
+    return (
+      <Section style={{ minHeight: "70vh" }}>
+        <div style={{ maxWidth: 620, margin: "0 auto" }}>
+          <h1 style={{ fontFamily: T.font, fontSize: 34, fontWeight: 700, color: T.text, margin: "10px 0 8px", textAlign: "center", letterSpacing: "-0.01em" }}>
+            Tell us about your home
+          </h1>
+          <p style={{ fontFamily: T.font, fontSize: 16, color: T.muted, textAlign: "center", margin: "0 0 36px" }}>
+            Step 1 of 2 · Takes about a minute
+          </p>
+
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14 }}>
+            <Input label="Street Address" value={prop.address} onChange={(v) => setProp({ ...prop, address: v })} placeholder="123 Main St" />
+            <Input label="City" value={prop.city} onChange={(v) => setProp({ ...prop, city: v })} placeholder="Cypress" half />
+            <Input label="ZIP" value={prop.zip} onChange={(v) => setProp({ ...prop, zip: v })} placeholder="90630" half />
+            <Input label="Bedrooms" type="number" value={prop.beds} onChange={(v) => setProp({ ...prop, beds: v })} placeholder="3" half />
+            <Input label="Bathrooms" type="number" value={prop.baths} onChange={(v) => setProp({ ...prop, baths: v })} placeholder="2" half />
+            <Input label="Square Feet" type="number" value={prop.sqft} onChange={(v) => setProp({ ...prop, sqft: v })} placeholder="1500" half />
+            <Input label="Year Built" type="number" value={prop.year} onChange={(v) => setProp({ ...prop, year: v })} placeholder="1975" half />
+          </div>
+
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: T.muted, margin: "24px 0 10px", fontFamily: T.font }}>CONDITION</label>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10 }}>
+            {CONDITIONS.map((c) => (
+              <div key={c.id} onClick={() => setProp({ ...prop, condition: c.id })} style={{
+                padding: "16px 18px", borderRadius: 14, cursor: "pointer", transition: "all 0.15s",
+                border: prop.condition === c.id ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
+                background: prop.condition === c.id ? "#F0F7FF" : "#fff",
+              }}>
+                <div style={{ fontFamily: T.font, fontWeight: 600, fontSize: 16, color: T.text }}>{c.label}</div>
+                <div style={{ fontFamily: T.font, fontSize: 13, color: T.muted, marginTop: 2 }}>{c.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: T.muted, margin: "24px 0 10px", fontFamily: T.font }}>REASON FOR SELLING (OPTIONAL)</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {REASONS.map((r) => (
+              <span key={r} onClick={() => setProp({ ...prop, reason: r })} style={{
+                fontFamily: T.font, fontSize: 14, padding: "9px 16px", borderRadius: 980, cursor: "pointer", transition: "all 0.15s",
+                border: prop.reason === r ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
+                background: prop.reason === r ? "#F0F7FF" : "#fff",
+                color: prop.reason === r ? T.blue : T.text,
+                fontWeight: prop.reason === r ? 600 : 400,
+              }}>{r}</span>
+            ))}
+          </div>
+
+          <div style={{ textAlign: "center", marginTop: 36 }}>
+            <Button onClick={() => setStep("form2")} disabled={!valid}>Continue</Button>
+          </div>
+        </div>
+      </Section>
+    );
+  }
+
+  // — Step 2: photos —
+  if (step === "form2") {
+    return (
+      <Section style={{ minHeight: "70vh" }}>
+        <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
+          <h1 style={{ fontFamily: T.font, fontSize: 34, fontWeight: 700, color: T.text, margin: "10px 0 8px", letterSpacing: "-0.01em" }}>
+            Add photos <span style={{ color: T.muted, fontWeight: 400 }}>(optional)</span>
+          </h1>
+          <p style={{ fontFamily: T.font, fontSize: 16, color: T.muted, margin: "0 0 32px", lineHeight: 1.5 }}>
+            Step 2 of 2 · Photos help us give you a sharper, often higher estimate. Kitchen, bathrooms, and exterior work best.
+          </p>
+
+          <label style={{
+            display: "block", border: `2px dashed ${T.border}`, borderRadius: 20, padding: "48px 24px",
+            cursor: "pointer", background: T.bgSoft, transition: "all 0.2s",
+          }}>
+            <input type="file" accept="image/*" multiple style={{ display: "none" }}
+              onChange={(e) => setPhotos([...photos, ...Array.from(e.target.files)].slice(0, 6))} />
+            <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
+            <div style={{ fontFamily: T.font, fontSize: 17, fontWeight: 600, color: T.text }}>Tap to add photos</div>
+            <div style={{ fontFamily: T.font, fontSize: 13, color: T.muted, marginTop: 4 }}>Up to 6 photos</div>
+          </label>
+
+          {photos.length > 0 && (
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 18 }}>
+              {photos.map((f, i) => (
+                <div key={i} style={{ position: "relative" }}>
+                  <img src={URL.createObjectURL(f)} alt="" style={{ width: 84, height: 84, objectFit: "cover", borderRadius: 12 }} />
+                  <div onClick={() => setPhotos(photos.filter((_, j) => j !== i))} style={{
+                    position: "absolute", top: -6, right: -6, width: 22, height: 22, borderRadius: "50%",
+                    background: T.text, color: "#fff", fontSize: 13, display: "flex", alignItems: "center",
+                    justifyContent: "center", cursor: "pointer", fontFamily: T.font,
+                  }}>✕</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: 12, justifyContent: "center", marginTop: 36 }}>
+            <Button variant="secondary" onClick={() => setStep("form1")}>Back</Button>
+            <Button onClick={runAnalysis}>{photos.length > 0 ? "Get My Estimate" : "Get My Estimate (No Photos)"}</Button>
+          </div>
+        </div>
+      </Section>
+    );
+  }
+
+  // — Loading —
+  if (step === "loading") {
+    return (
+      <Section style={{ minHeight: "70vh", display: "flex", alignItems: "center" }}>
+        <div style={{ maxWidth: 420, margin: "0 auto", width: "100%" }}>
+          <h2 style={{ fontFamily: T.font, fontSize: 26, fontWeight: 700, color: T.text, textAlign: "center", margin: "0 0 36px" }}>
+            Analyzing your home…
+          </h2>
+          {LOADING_STEPS.map((s, i) => (
+            <div key={s} style={{
+              display: "flex", alignItems: "center", gap: 14, padding: "14px 18px",
+              borderRadius: 14, marginBottom: 10, transition: "all 0.4s",
+              background: i < loadingStep ? "#F0FFF4" : T.bgSoft,
+              opacity: i <= loadingStep ? 1 : 0.4,
+            }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: "50%", flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                background: i < loadingStep ? T.green : T.border,
+                color: "#fff", fontSize: 14, fontWeight: 700, transition: "all 0.4s",
+              }}>{i < loadingStep ? "✓" : ""}</div>
+              <span style={{ fontFamily: T.font, fontSize: 15, color: T.text, fontWeight: i < loadingStep ? 600 : 400 }}>{s}</span>
+            </div>
           ))}
         </div>
+      </Section>
+    );
+  }
 
-        <p style={{ fontFamily:"system-ui", fontSize:13, color:C.muted, margin:"0 0 0.4rem" }}>Step {step} of 2</p>
-
-        {step === 1 && (
-          <div>
-            <h2 style={{ fontSize:26, color:C.dark, margin:"0 0 0.4rem" }}>Tell us about your home</h2>
-            <p style={{ fontFamily:"system-ui", color:C.muted, fontSize:15, margin:"0 0 2rem" }}>Basic info helps us give you the most accurate number.</p>
-
-            <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
-              <div>
-                <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, color:C.dark, marginBottom:6 }}>Street address</label>
-                <input value={form.address} onChange={e => set("address", e.target.value)} placeholder="123 Main St" style={inp()} />
+  // — Result —
+  if (step === "result" && result) {
+    if (submitted) {
+      return (
+        <Section style={{ minHeight: "60vh", textAlign: "center" }}>
+          <div style={{ maxWidth: 480, margin: "40px auto 0" }}>
+            <div style={{ fontSize: 52, marginBottom: 16 }}>🎉</div>
+            <h1 style={{ fontFamily: T.font, fontSize: 32, fontWeight: 700, color: T.text, margin: "0 0 12px" }}>
+              {submitted === "lock" ? "You're all set!" : "Counter received!"}
+            </h1>
+            <p style={{ fontFamily: T.font, fontSize: 17, color: T.muted, lineHeight: 1.6, margin: "0 0 24px" }}>
+              {submitted === "lock"
+                ? "We'll reach out within a few hours to schedule your free 10-minute video walkthrough and confirm your firm written offer."
+                : "Our team will review your number and what you told us, then get back to you — usually within a few hours."}
+            </p>
+            <div style={{ background: T.bgSoft, borderRadius: 16, padding: 22, textAlign: "left" }}>
+              <div style={{ fontFamily: T.font, fontSize: 14, color: T.muted, marginBottom: 6 }}>Your preliminary range</div>
+              <div style={{ fontFamily: T.font, fontSize: 26, fontWeight: 700, color: T.text }}>
+                {fmt(result.offerLow)} – {fmt(result.offerHigh)}
               </div>
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 1fr 1fr", gap:10 }}>
-                {[
-                  { l:"City",  k:"city",  p:"City"  },
-                  { l:"State", k:"state", p:"CA"    },
-                  { l:"ZIP",   k:"zip",   p:"90001" },
-                ].map(f => (
-                  <div key={f.k}>
-                    <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, color:C.dark, marginBottom:6 }}>{f.l}</label>
-                    <input value={form[f.k]} onChange={e => set(f.k, e.target.value)} placeholder={f.p} style={inp()} />
-                  </div>
-                ))}
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10 }}>
-                {[
-                  { l:"Beds", k:"beds", p:"3" },{ l:"Baths", k:"baths", p:"2" },
-                  { l:"Sq Ft", k:"sqft", p:"1200" },{ l:"Year Built", k:"yearBuilt", p:"1985" },
-                ].map(f => (
-                  <div key={f.k}>
-                    <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, color:C.dark, marginBottom:6 }}>{f.l}</label>
-                    <input type="number" value={form[f.k]} onChange={e => set(f.k, e.target.value)} placeholder={f.p} style={inp({ paddingLeft:"0.75rem" })} />
-                  </div>
-                ))}
-              </div>
+              {timeline && <div style={{ fontFamily: T.font, fontSize: 14, color: T.muted, marginTop: 8 }}>Timeline: {TIMELINES.find((t) => t.id === timeline)?.label}</div>}
+              {perks.length > 0 && <div style={{ fontFamily: T.font, fontSize: 14, color: T.muted, marginTop: 4 }}>Included: {perks.map((p) => BONUSES.find((b) => b.id === p)?.title).join(", ")}</div>}
+            </div>
+          </div>
+        </Section>
+      );
+    }
 
-              <div>
-                <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, color:C.dark, marginBottom:8 }}>Property condition</label>
-                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-                  {CONDITIONS.map(opt => (
-                    <button key={opt.v} onClick={() => set("condition", opt.v)}
-                      style={{ display:"flex", alignItems:"center", gap:12, padding:"0.85rem 1rem", borderRadius:8, border:`1.5px solid ${form.condition===opt.v ? C.dark : C.border}`, background: form.condition===opt.v ? C.mint : C.white, cursor:"pointer", textAlign:"left" }}>
-                      <span style={{ fontSize:20 }}>{opt.icon}</span>
-                      <div>
-                        <div style={{ fontFamily:"system-ui", fontSize:14, fontWeight:600, color:C.dark }}>{opt.label}</div>
-                        <div style={{ fontFamily:"system-ui", fontSize:12, color:C.muted }}>{opt.sub}</div>
-                      </div>
-                      {form.condition===opt.v && <span style={{ marginLeft:"auto", color:C.dark }}>✓</span>}
-                    </button>
-                  ))}
+    return (
+      <>
+        <Section soft style={{ padding: "60px 24px 40px", textAlign: "center" }}>
+          <div style={{ fontFamily: T.font, fontSize: 14, fontWeight: 600, color: T.green, marginBottom: 10 }}>✓ ESTIMATE READY</div>
+          <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, margin: "0 0 6px" }}>{prop.address}, {prop.city}, {prop.state}</p>
+          <h1 style={{ fontFamily: T.font, fontSize: "clamp(36px, 6vw, 54px)", fontWeight: 700, color: T.text, margin: "0 0 8px", letterSpacing: "-0.02em" }}>
+            {fmt(result.offerLow)} – {fmt(result.offerHigh)}
+          </h1>
+          <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, margin: 0 }}>
+            Preliminary cash offer range · No fees or commissions · Subject to walkthrough
+          </p>
+        </Section>
+
+        <Section style={{ padding: "40px 24px" }}>
+          <div style={{ maxWidth: 720, margin: "0 auto" }}>
+            {/* Value breakdown */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 14, marginBottom: 28 }}>
+              {[
+                { label: "Est. Market Value", val: `${fmt(result.marketValueLow)} – ${fmt(result.marketValueHigh)}` },
+                { label: "After-Repair Value", val: fmt(result.arv) },
+                { label: "Est. Repairs", val: `${fmt(result.repairLow)} – ${fmt(result.repairHigh)}` },
+                { label: "Est. Closing", val: `${result.closingDays} days` },
+              ].map((m) => (
+                <div key={m.label} style={{ background: T.bgSoft, borderRadius: 16, padding: 18 }}>
+                  <div style={{ fontFamily: T.font, fontSize: 12, fontWeight: 600, color: T.muted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.04em" }}>{m.label}</div>
+                  <div style={{ fontFamily: T.font, fontSize: 17, fontWeight: 700, color: T.text }}>{m.val}</div>
                 </div>
-              </div>
+              ))}
+            </div>
 
-              <div>
-                <label style={{ display:"block", fontFamily:"system-ui", fontSize:13, color:C.dark, marginBottom:8 }}>
-                  Reason for selling? <span style={{ color:C.muted, fontWeight:400 }}>(helps us tailor your offer)</span>
-                </label>
-                <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
-                  {REASONS.map(r => (
-                    <button key={r} onClick={() => set("reason", r)}
-                      style={{ padding:"0.5rem 1rem", borderRadius:20, border:`1.5px solid ${form.reason===r ? C.dark : C.border}`, background: form.reason===r ? C.dark : C.white, color: form.reason===r ? C.white : C.text, fontFamily:"system-ui", fontSize:13, cursor:"pointer" }}>
-                      {r}
-                    </button>
-                  ))}
-                </div>
+            {/* Assessment */}
+            <div style={{ background: T.bgSoft, borderRadius: 20, padding: 26, marginBottom: 28 }}>
+              <h3 style={{ fontFamily: T.font, fontSize: 17, fontWeight: 600, color: T.text, margin: "0 0 10px" }}>Our take on your home</h3>
+              <p style={{ fontFamily: T.font, fontSize: 15, color: T.text, lineHeight: 1.6, margin: "0 0 14px" }}>{result.summary}</p>
+              {result.repairNote && <p style={{ fontFamily: T.font, fontSize: 14, color: T.muted, lineHeight: 1.5, margin: "0 0 14px" }}>{result.repairNote}</p>}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {result.keyFactors?.map((f) => (
+                  <span key={f} style={{ fontFamily: T.font, fontSize: 13, background: "#fff", border: `1px solid ${T.border}`, borderRadius: 980, padding: "6px 14px", color: T.muted }}>{f}</span>
+                ))}
               </div>
             </div>
 
-            <button onClick={() => setStep(2)} disabled={!canProceed1}
-              style={{ background: canProceed1 ? C.dark : C.border, color:C.white, border:"none", borderRadius:10, padding:"1rem 2rem", fontSize:16, fontFamily:"Georgia, serif", cursor: canProceed1 ? "pointer" : "not-allowed", marginTop:"2rem", width:"100%" }}>
-              Continue → Add Photos
-            </button>
-            {error && <p style={{ color:"red", fontFamily:"system-ui", marginTop:"1rem", fontSize:14 }}>{error}</p>}
-          </div>
-        )}
-
-        {step === 2 && (
-          <div>
-            <h2 style={{ fontSize:26, color:C.dark, margin:"0 0 0.4rem" }}>Add some photos</h2>
-            <p style={{ fontFamily:"system-ui", color:C.muted, fontSize:15, margin:"0 0 2rem", lineHeight:1.65 }}>
-              More photos = sharper estimate. Exterior, kitchen, bathrooms, and any damage are most useful.
-              <br /><strong style={{ color:C.dark }}>This step is optional</strong> — skip it and still get an estimate.
-            </p>
-
-            <input ref={fileRef} type="file" accept="image/*" multiple onChange={e => handleFiles(e.target.files)} style={{ display:"none" }} />
-
-            <div onClick={() => fileRef.current.click()}
-              style={{ border:`2px dashed ${C.border}`, borderRadius:12, padding:"3rem 2rem", textAlign:"center", cursor:"pointer", background:C.white, marginBottom:"1.25rem" }}>
-              <div style={{ fontSize:36, marginBottom:"0.75rem" }}>📷</div>
-              <p style={{ fontFamily:"system-ui", color:C.dark, fontWeight:600, margin:"0 0 0.25rem" }}>Click to upload photos</p>
-              <p style={{ fontFamily:"system-ui", color:C.muted, fontSize:13, margin:0 }}>Up to 6 photos · JPG or PNG</p>
+            {/* Perks */}
+            <h3 style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, margin: "0 0 6px", textAlign: "center" }}>Included with every closing</h3>
+            <p style={{ fontFamily: T.font, fontSize: 15, color: T.muted, textAlign: "center", margin: "0 0 20px" }}>Select what would make your move easier — these are on us.</p>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 32 }}>
+              {BONUSES.map((b) => {
+                const on = perks.includes(b.id);
+                return (
+                  <div key={b.id} onClick={() => setPerks(on ? perks.filter((p) => p !== b.id) : [...perks, b.id])} style={{
+                    padding: 20, borderRadius: 16, cursor: "pointer", transition: "all 0.15s",
+                    border: on ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
+                    background: on ? "#F0F7FF" : "#fff",
+                  }}>
+                    <div style={{ fontSize: 26, marginBottom: 8 }}>{b.icon}</div>
+                    <div style={{ fontFamily: T.font, fontWeight: 600, fontSize: 15, color: T.text, marginBottom: 4 }}>
+                      {on ? "✓ " : ""}{b.title}
+                    </div>
+                    <div style={{ fontFamily: T.font, fontSize: 13, color: T.muted, lineHeight: 1.45 }}>{b.desc}</div>
+                  </div>
+                );
+              })}
             </div>
 
-            {photos.length > 0 && (
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10, marginBottom:"1.25rem" }}>
-                {photos.map((p, i) => (
-                  <div key={i} style={{ position:"relative", aspectRatio:"4/3", borderRadius:8, overflow:"hidden", border:`1px solid ${C.border}` }}>
-                    <img src={p.preview} alt="" style={{ width:"100%", height:"100%", objectFit:"cover" }} />
-                    <button onClick={() => setPhotos(photos.filter((_,j) => j!==i))}
-                      style={{ position:"absolute", top:4, right:4, background:"rgba(0,0,0,0.65)", color:C.white, border:"none", borderRadius:"50%", width:24, height:24, cursor:"pointer", fontSize:12, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                      ✕
-                    </button>
-                  </div>
-                ))}
+            {/* Timeline */}
+            <h3 style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, margin: "0 0 16px", textAlign: "center" }}>What's your ideal timeline?</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 40 }}>
+              {TIMELINES.map((t) => (
+                <div key={t.id} onClick={() => setTimeline(t.id)} style={{
+                  padding: "18px 16px", borderRadius: 16, cursor: "pointer", textAlign: "center", transition: "all 0.15s",
+                  border: timeline === t.id ? `2px solid ${T.blue}` : `1px solid ${T.border}`,
+                  background: timeline === t.id ? "#F0F7FF" : "#fff",
+                }}>
+                  <div style={{ fontFamily: T.font, fontWeight: 600, fontSize: 15, color: T.text }}>{t.label}</div>
+                  <div style={{ fontFamily: T.font, fontSize: 13, color: T.muted, marginTop: 2 }}>{t.desc}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Dual CTA */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+              {/* Lock in */}
+              <div style={{ border: `1px solid ${T.border}`, borderRadius: 20, padding: 26, boxShadow: T.cardShadow }}>
+                <h4 style={{ fontFamily: T.font, fontSize: 19, fontWeight: 700, color: T.text, margin: "0 0 4px" }}>🔒 Lock In This Range</h4>
+                <p style={{ fontFamily: T.font, fontSize: 14, color: T.muted, margin: "0 0 16px", lineHeight: 1.5 }}>
+                  Schedule a free 10-minute video walkthrough and get a firm written offer.
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <Input value={contact.name} onChange={(v) => setContact({ ...contact, name: v })} placeholder="Full name" />
+                  <Input type="tel" value={contact.phone} onChange={(v) => setContact({ ...contact, phone: v })} placeholder="Phone" />
+                  <Input type="email" value={contact.email} onChange={(v) => setContact({ ...contact, email: v })} placeholder="Email" />
+                  <Button onClick={() => saveLead("lock")} disabled={!contact.name || !contact.phone}>Schedule Walkthrough</Button>
+                </div>
               </div>
-            )}
 
-            <button onClick={getEstimate}
-              style={{ background:C.dark, color:C.white, border:"none", borderRadius:10, padding:"1rem 2rem", fontSize:16, fontFamily:"Georgia, serif", cursor:"pointer", width:"100%" }}>
-              {photos.length > 0
-                ? `Get My Estimate with ${photos.length} Photo${photos.length>1?"s":""} →`
-                : "Get My Estimate (No Photos) →"}
-            </button>
+              {/* Counter */}
+              <div style={{ border: `1px solid ${T.border}`, borderRadius: 20, padding: 26 }}>
+                <h4 style={{ fontFamily: T.font, fontSize: 19, fontWeight: 700, color: T.text, margin: "0 0 4px" }}>💬 Think It's Worth More?</h4>
+                <p style={{ fontFamily: T.font, fontSize: 14, color: T.muted, margin: "0 0 16px", lineHeight: 1.5 }}>
+                  Tell us your number and what our estimate missed — new roof, remodel, anything. A real person will review it.
+                </p>
+                <Button variant="secondary" onClick={() => setCounterOpen(true)} style={{ width: "100%" }}>Make a Counter Offer</Button>
+              </div>
+            </div>
 
-            <p style={{ textAlign:"center", fontFamily:"system-ui", fontSize:13, color:C.muted, marginTop:"1rem" }}>
-              Photos are used only for this estimate and never stored or shared.
+            <p style={{ fontFamily: T.font, fontSize: 13, color: T.muted, textAlign: "center", marginTop: 36, lineHeight: 1.6 }}>
+              This is a preliminary estimate, not a formal appraisal. Your firm offer comes after a quick walkthrough — and it's still zero obligation.
             </p>
           </div>
+        </Section>
+
+        {/* Counter modal */}
+        {counterOpen && (
+          <div style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 200,
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+          }} onClick={() => setCounterOpen(false)}>
+            <div onClick={(e) => e.stopPropagation()} style={{
+              background: "#fff", borderRadius: 24, padding: 30, maxWidth: 440, width: "100%",
+              maxHeight: "88vh", overflowY: "auto",
+            }}>
+              <h3 style={{ fontFamily: T.font, fontSize: 22, fontWeight: 700, color: T.text, margin: "0 0 6px" }}>Your counter offer</h3>
+              <p style={{ fontFamily: T.font, fontSize: 14, color: T.muted, margin: "0 0 20px", lineHeight: 1.5 }}>
+                Our estimate: {fmt(result.offerLow)} – {fmt(result.offerHigh)}
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <Input label="What number did you have in mind?" type="number" value={counter.price} onChange={(v) => setCounter({ ...counter, price: v })} placeholder="$" />
+                <div>
+                  <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: T.muted, marginBottom: 6, fontFamily: T.font }}>What did our estimate miss?</label>
+                  <textarea
+                    value={counter.missed}
+                    onChange={(e) => setCounter({ ...counter, missed: e.target.value })}
+                    rows={3}
+                    placeholder="New roof? Remodeled kitchen? Tell us what adds value…"
+                    style={{
+                      width: "100%", boxSizing: "border-box", fontFamily: T.font, fontSize: 16,
+                      padding: "12px 14px", borderRadius: 12, border: `1px solid ${T.border}`,
+                      background: T.bgSoft, outline: "none", resize: "vertical",
+                    }}
+                  />
+                </div>
+                <Input label="Name" value={counter.name} onChange={(v) => setCounter({ ...counter, name: v })} placeholder="Full name" />
+                <Input label="Phone" type="tel" value={counter.phone} onChange={(v) => setCounter({ ...counter, phone: v })} placeholder="Phone" />
+                <Input label="Email" type="email" value={counter.email} onChange={(v) => setCounter({ ...counter, email: v })} placeholder="Email" />
+                <Button onClick={() => saveLead("counter")} disabled={!counter.price || !counter.name || !counter.phone}>
+                  Submit Counter Offer
+                </Button>
+                <Button variant="ghost" onClick={() => setCounterOpen(false)}>Cancel</Button>
+              </div>
+            </div>
+          </div>
         )}
+      </>
+    );
+  }
+
+  return null;
+}
+
+// ── Footer ───────────────────────────────────
+
+function Footer({ go }) {
+  return (
+    <footer style={{ background: T.bgSoft, borderTop: `1px solid ${T.border}`, padding: "48px 24px" }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 28 }}>
+          <div>
+            <div style={{ fontFamily: T.font, fontWeight: 700, fontSize: 17, color: T.text, marginBottom: 8 }}>
+              ClearOffer <span style={{ color: T.blue }}>Home</span>
+            </div>
+            <p style={{ fontFamily: T.font, fontSize: 13, color: T.muted, maxWidth: 300, lineHeight: 1.5, margin: 0 }}>
+              Southern California real estate investors. We buy homes as-is, on your timeline, with total transparency.
+            </p>
+          </div>
+          <div style={{ display: "flex", gap: 36 }}>
+            <div>
+              <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 10 }}>Company</div>
+              {[["About Us", "about"], ["Contact", "contact"], ["Get an Offer", "estimate"]].map(([label, id]) => (
+                <div key={id} onClick={() => go(id)} style={{ fontFamily: T.font, fontSize: 13, color: T.muted, marginBottom: 8, cursor: "pointer" }}>{label}</div>
+              ))}
+            </div>
+            <div>
+              <div style={{ fontFamily: T.font, fontSize: 13, fontWeight: 600, color: T.text, marginBottom: 10 }}>Reach us</div>
+              <a href="mailto:offers@clearofferhome.com" style={{ fontFamily: T.font, fontSize: 13, color: T.muted, textDecoration: "none", display: "block", marginBottom: 8 }}>
+                offers@clearofferhome.com
+              </a>
+            </div>
+          </div>
+        </div>
+        <p style={{ fontFamily: T.font, fontSize: 12, color: T.muted, marginTop: 36, lineHeight: 1.6 }}>
+          © {new Date().getFullYear()} ClearOffer Home. All estimates are preliminary and subject to in-person verification. We are professional real estate investors; we are not licensed real estate agents or appraisers, and no content on this site constitutes an appraisal, brokerage service, or legal advice.
+        </p>
       </div>
+    </footer>
+  );
+}
+
+// ── App ──────────────────────────────────────
+
+export default function App() {
+  const [page, setPage] = useState("home");
+
+  const go = (p) => {
+    setPage(p);
+    window.scrollTo({ top: 0, behavior: "instant" });
+  };
+
+  return (
+    <div style={{ background: T.bg, minHeight: "100vh" }}>
+      <Nav page={page} go={go} />
+      {page === "home" && <HomePage go={go} />}
+      {page === "about" && <AboutPage go={go} />}
+      {page === "contact" && <ContactPage />}
+      {page === "estimate" && <EstimateFlow go={go} />}
+      <Footer go={go} />
     </div>
   );
 }
