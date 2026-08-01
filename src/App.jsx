@@ -22,6 +22,13 @@ const T = {
   border: "#E5E5EA",
   cardShadow: "0 4px 24px rgba(0,0,0,0.06)",
   font: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  logoFont: "'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+};
+
+const IMG = {
+  heroHome: "https://images.unsplash.com/photo-1570129477492-45c003edd2be?auto=format&fit=crop&w=1600&q=80",
+  aboutNeighborhood: "https://images.unsplash.com/photo-1449844908441-8829872d2607?auto=format&fit=crop&w=1600&q=80",
+  contactDoor: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=1600&q=80",
 };
 
 const CONDITIONS = [
@@ -140,8 +147,8 @@ function Nav({ page, go }) {
         maxWidth: 1000, margin: "0 auto", padding: "0 24px",
         display: "flex", alignItems: "center", justifyContent: "space-between", height: 56,
       }}>
-        <div onClick={() => go("home")} style={{ cursor: "pointer", fontFamily: T.font, fontWeight: 700, fontSize: 19, color: T.text }}>
-          ClearOffer <span style={{ color: T.blue }}>Home</span>
+        <div onClick={() => go("home")} style={{ cursor: "pointer", fontFamily: T.logoFont, fontWeight: 700, fontSize: 21, letterSpacing: "-0.03em", color: T.text }}>
+          ClearOffer<span style={{ color: T.blue }}>Home</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           {links.map((l) => (
@@ -178,6 +185,9 @@ function HomePage({ go }) {
         <p style={{ fontFamily: T.font, fontSize: 13, color: T.muted, marginTop: 20 }}>
           Free · Private · No commitment
         </p>
+        <div style={{ maxWidth: 920, margin: "60px auto 0", borderRadius: 28, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.14)" }}>
+          <img src={IMG.heroHome} alt="Beautiful Southern California home" style={{ width: "100%", display: "block", aspectRatio: "16/9", objectFit: "cover" }} />
+        </div>
       </Section>
 
       {/* How it works */}
@@ -256,6 +266,9 @@ function AboutPage({ go }) {
         <p style={{ fontFamily: T.font, fontSize: 19, color: T.muted, maxWidth: 620, margin: "22px auto 0", lineHeight: 1.6 }}>
           ClearOffer Home is a Southern California real estate investment team built on a simple idea: selling your home for cash shouldn't feel shady, pushy, or embarrassing.
         </p>
+        <div style={{ maxWidth: 920, margin: "48px auto 0", borderRadius: 28, overflow: "hidden", boxShadow: "0 24px 64px rgba(0,0,0,0.14)" }}>
+          <img src={IMG.aboutNeighborhood} alt="Southern California neighborhood" style={{ width: "100%", display: "block", aspectRatio: "21/9", objectFit: "cover" }} />
+        </div>
       </Section>
 
       <Section soft>
@@ -320,7 +333,7 @@ function ContactPage() {
               "Full Name": form.name,
               "Email": form.email,
               "Phone": form.phone,
-              "What AI Missed": `CONTACT FORM: ${form.message}`,
+              "What Ai Missed": `CONTACT FORM: ${form.message}`,
               "Lead Date": new Date().toISOString().split("T")[0],
               "Status": "New Lead",
             },
@@ -338,6 +351,9 @@ function ContactPage() {
   return (
     <Section style={{ minHeight: "60vh" }}>
       <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
+        <div style={{ borderRadius: 24, overflow: "hidden", boxShadow: T.cardShadow, marginBottom: 8 }}>
+          <img src={IMG.contactDoor} alt="Welcoming home entrance" style={{ width: "100%", display: "block", height: 200, objectFit: "cover" }} />
+        </div>
         <h1 style={{ fontFamily: T.font, fontSize: 40, fontWeight: 700, color: T.text, margin: "20px 0 12px", letterSpacing: "-0.01em" }}>
           Talk to a real person
         </h1>
@@ -499,19 +515,19 @@ Return ONLY this JSON structure:
       "Address": prop.address,
       "City": prop.city,
       "State": prop.state,
-      "ZIP": prop.zip,
+      "Zip": prop.zip,
       "Condition": prop.condition,
       "Reason for Selling": prop.reason,
       "Timeline": timeline,
-      "AI Offer Low": result?.offerLow || 0,
-      "AI Offer High": result?.offerHigh || 0,
-      "Bonuses Selected": perks.join(", "),
+      "Ai Offer Low": result?.offerLow || 0,
+      "Ai Offer High": result?.offerHigh || 0,
+      "Bonus Selected": perks.join(", "),
       "Lead Date": new Date().toISOString().split("T")[0],
       "Status": "New Lead",
     };
     if (kind === "counter") {
       fields["Counter Offer Price"] = Number(counter.price) || 0;
-      fields["What AI Missed"] = counter.missed;
+      fields["What Ai Missed"] = counter.missed;
     }
     try {
       const r = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE}/${AIRTABLE_TABLE}`, {
@@ -859,8 +875,8 @@ function Footer({ go }) {
       <div style={{ maxWidth: 1000, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 28 }}>
           <div>
-            <div style={{ fontFamily: T.font, fontWeight: 700, fontSize: 17, color: T.text, marginBottom: 8 }}>
-              ClearOffer <span style={{ color: T.blue }}>Home</span>
+            <div style={{ fontFamily: T.logoFont, fontWeight: 700, fontSize: 18, letterSpacing: "-0.03em", color: T.text, marginBottom: 8 }}>
+              ClearOffer<span style={{ color: T.blue }}>Home</span>
             </div>
             <p style={{ fontFamily: T.font, fontSize: 13, color: T.muted, maxWidth: 300, lineHeight: 1.5, margin: 0 }}>
               Southern California real estate investors. We buy homes as-is, on your timeline, with total transparency.
